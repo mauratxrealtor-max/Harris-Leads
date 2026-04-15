@@ -1,0 +1,109 @@
+name: Scrape Harris County Motivated Seller Leads
+
+on:
+  schedule:
+    - cron: "0 7 * * *"   # 07:00 UTC = 02:00 AM CDT
+  workflow_dispatch:        # manual trigger from GitHub UI
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "scrape"
+  cancel-in-progress: false
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────
+  scrape:
+    name: Fetch Leads & Commit Data
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: scraper/requirements.txt
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install requests beautifulsoup4 lxml dbfread playwright
+
+      - name: Install Playwright browsers
+        run: |
+          python -m playwright install --with-deps chromium
+
+      - name: Create output directories
+        run: |
+          mkdir -p dashboard data tmp
+
+      - name: Run scraper
+        env:
+          LOOKBACK_DAYS: "7"
+        run: |
+          python scraper/fetch.py
+        timeout-minutes: 45
+
+      - name: Verify output files exist
+        run: |
+          test -f dashboard/records.json && echo "dashboard/records.json ✓"
+          test -f data/records.json     && echo "data/records.json ✓"
+          echo "Record counts:"
+          python -c "
+          import json
+          with open('dashboard/records.json') as f:
+              d = json.load(f)
+          print(f'  Total: {d[\"total\"]}')
+          print(f'  With address: {d[\"with_address\"]}')
+          print(f'  Fetched at: {d[\"fetched_at\"]}')
+          "
+
+      - name: Commit and push updated data
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name  "github-actions[bot]"
+
+          git add dashboard/records.json data/records.json data/ghl_export.csv || true
+          git diff --staged --quiet && echo "No changes to commit." && exit 0
+
+          TOTAL=$(python -c "import json; print(json.load(open('dashboard/records.json'))['total'])")
+          DATE=$(date -u +"%Y-%m-%d")
+          git commit -m "chore: update leads ${DATE} (${TOTAL} records)"
+          git push
+
+  # ──────────────────────────────────────────────────────────────────────
+  deploy-pages:
+    name: Deploy Dashboard to GitHub Pages
+    needs: scrape
+    runs-on: ubuntu-22.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main   # make sure we get the freshly committed data
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload dashboard artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dashboard/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
