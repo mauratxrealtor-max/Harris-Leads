@@ -348,11 +348,11 @@ class ClerkScraper:
     Real Property page (RP.aspx) - all property doc types.
     Foreclosures page (FRCL_R.aspx) - NOFC / TAXDEED only.
 
-    Confirmed form field IDs from live portal:
-      Date From  : ctl00$cphBody$tbDateFrom
-      Date To    : ctl00$cphBody$tbDateTo
-      Inst. Type : ctl00$cphBody$tbInstrType
-      Search btn : ctl00$cphBody$btnSearch
+    Confirmed form field IDs from live portal log (run #4):
+      Search btn : ctl00_ContentPlaceHolder1_btnSearch
+      Date From  : ctl00_ContentPlaceHolder1_tbDateFrom  (assumed same pattern)
+      Date To    : ctl00_ContentPlaceHolder1_tbDateTo
+      Inst. Type : ctl00_ContentPlaceHolder1_tbInstrType
     """
 
     def __init__(self, date_from: str, date_to: str):
@@ -372,43 +372,50 @@ class ClerkScraper:
         portal_from = self._to_portal_date(self.date_from)
         portal_to   = self._to_portal_date(self.date_to)
 
-        # Date From - try specific ID first, then fallback selectors
+        # Date From - confirmed pattern: ctl00_ContentPlaceHolder1_*
         for sel in [
+            '#ctl00_ContentPlaceHolder1_tbDateFrom',
             '#ctl00_cphBody_tbDateFrom',
             'input[id*="DateFrom"]',
             'input[name*="DateFrom"]',
-            'input[id*="tbDate"][id*="From"]',
+            'input[id*="tbDate"]',
         ]:
             el = page.locator(sel).first
             if await el.count():
+                log.info("  DateFrom selector matched: %s", sel)
                 await el.triple_click()
                 await el.fill(portal_from)
                 break
+        else:
+            log.warning("  Could not find DateFrom field!")
 
         # Date To
         for sel in [
+            '#ctl00_ContentPlaceHolder1_tbDateTo',
             '#ctl00_cphBody_tbDateTo',
             'input[id*="DateTo"]',
             'input[name*="DateTo"]',
-            'input[id*="tbDate"][id*="To"]',
         ]:
             el = page.locator(sel).first
             if await el.count():
+                log.info("  DateTo selector matched: %s", sel)
                 await el.triple_click()
                 await el.fill(portal_to)
                 break
+        else:
+            log.warning("  Could not find DateTo field!")
 
         # Instrument Type
         for sel in [
+            '#ctl00_ContentPlaceHolder1_tbInstrType',
             '#ctl00_cphBody_tbInstrType',
             'input[id*="InstrType"]',
             'input[id*="InstrumentType"]',
-            'input[name*="InstrType"]',
             'select[id*="InstrType"]',
-            'select[id*="DocType"]',
         ]:
             el = page.locator(sel).first
             if await el.count():
+                log.info("  InstrType selector matched: %s", sel)
                 tag = await el.evaluate("el => el.tagName.toLowerCase()")
                 if tag == "select":
                     try:
@@ -419,21 +426,24 @@ class ClerkScraper:
                     await el.triple_click()
                     await el.fill(doc_code)
                 break
+        else:
+            log.warning("  Could not find InstrType field!")
 
-        # Submit / Search button
+        # Submit - CONFIRMED ID from live run log: ctl00_ContentPlaceHolder1_btnSearch
         for sel in [
+            '#ctl00_ContentPlaceHolder1_btnSearch',
             '#ctl00_cphBody_btnSearch',
             'input[id*="btnSearch"]',
             'input[value="Search"]',
-            'button:has-text("Search")',
             'input[type="submit"]',
         ]:
             el = page.locator(sel).first
             if await el.count():
+                log.info("  Search btn selector matched: %s", sel)
                 await el.click()
                 break
-
-        await page.wait_for_load_state("networkidle", timeout=45_000)
+        else:
+            log.warning("  Could not find Search button!")
 
     async def _parse_rp_page(self, page, doc_code: str) -> list[dict]:
         """Extract records from the current result page."""
@@ -629,10 +639,10 @@ class StaticClerkScraper:
                 **vs,
                 "__EVENTTARGET":   "",
                 "__EVENTARGUMENT": "",
-                "ctl00$cphBody$tbDateFrom":  self.date_from,
-                "ctl00$cphBody$tbDateTo":    self.date_to,
-                "ctl00$cphBody$tbInstrType": doc_code,
-                "ctl00$cphBody$btnSearch":   "Search",
+                "ctl00$ContentPlaceHolder1$tbDateFrom":  self.date_from,
+                "ctl00$ContentPlaceHolder1$tbDateTo":    self.date_to,
+                "ctl00$ContentPlaceHolder1$tbInstrType": doc_code,
+                "ctl00$ContentPlaceHolder1$btnSearch":   "Search",
             }
             resp = self.session.post(url, data=payload, timeout=60)
             resp.raise_for_status()
