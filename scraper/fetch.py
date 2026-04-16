@@ -380,22 +380,26 @@ class ClerkScraper:
         log.info("  === END INPUTS ===")
 
     async def _set_field(self, page, fragments: list[str], value: str, field_name: str) -> bool:
-        """Try every id/name fragment until one matches, then fill."""
+        """Find input by id/name fragment, wait for it to be visible, then fill."""
         for frag in fragments:
             for attr in ["id", "name"]:
-                sel = f'input[{attr}*="{frag}"], select[{attr}*="{frag}"]'
+                sel = f'input[{attr}*="{frag}"]:not([type="hidden"]), select[{attr}*="{frag}"]'
                 try:
                     el = page.locator(sel).first
-                    if await el.count():
-                        actual = await el.get_attribute(attr) or frag
-                        tag = await el.evaluate("el => el.tagName.toLowerCase()")
-                        if tag == "select":
-                            await el.select_option(value=value)
-                        else:
-                            await el.triple_click()
-                            await el.fill(value)
-                        log.info("  %s filled (matched %s='%s')", field_name, attr, actual)
-                        return True
+                    await el.wait_for(state="visible", timeout=5_000)
+                    actual = await el.get_attribute(attr) or frag
+                    tag = await el.evaluate("el => el.tagName.toLowerCase()")
+                    if tag == "select":
+                        await el.select_option(value=value)
+                    else:
+                        await el.click()
+                        await el.triple_click()
+                        await el.fill(value)
+                        filled = await el.input_value()
+                        if not filled:
+                            await el.type(value, delay=30)
+                    log.info("  %s filled '%s' (matched %s='%s')", field_name, value, attr, actual)
+                    return True
                 except Exception:
                     continue
         log.warning("  Could not fill %s — no fragment matched %s", field_name, fragments)
@@ -405,6 +409,15 @@ class ClerkScraper:
         """Fill the Real Property search form and submit."""
         portal_from = self._to_portal_date(self.date_from)
         portal_to   = self._to_portal_date(self.date_to)
+
+        # Wait for the form to be fully rendered (txtFrom is a known field)
+        try:
+            await page.wait_for_selector(
+                '#ctl00_ContentPlaceHolder1_txtFrom',
+                state="visible", timeout=15_000
+            )
+        except Exception:
+            log.warning("  Form not ready after 15s — proceeding anyway")
 
         # Dump all inputs on first call so we can read real IDs from the log
         if doc_code == TARGET_CODES[0]:
@@ -551,7 +564,9 @@ class ClerkScraper:
         for attempt in range(1, 4):
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+                # Wait for full JS render — portal uses ASP.NET UpdatePanels
                 await page.wait_for_load_state("networkidle", timeout=30_000)
+                await asyncio.sleep(2)  # extra buffer for JS to finish rendering form
                 await self._fill_rp_form(page, doc_code)
                 return await self._paginate(page, doc_code)
             except Exception as exc:
