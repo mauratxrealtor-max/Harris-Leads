@@ -410,22 +410,19 @@ class ClerkScraper:
         if doc_code == TARGET_CODES[0]:
             await self._dump_inputs(page)
 
-        # Date From — try every plausible fragment
+        # Date From — CONFIRMED ID: ctl00_ContentPlaceHolder1_txtFrom
         await self._set_field(page, [
-            "DateFrom", "dateFrom", "tbDateFrom", "BeginDate", "StartDate",
-            "dtFrom", "Date_From", "date_from", "FileDateFrom", "RecordDateFrom",
+            "txtFrom", "DateFrom", "dateFrom", "tbDateFrom", "BeginDate",
         ], portal_from, "DateFrom")
 
-        # Date To
+        # Date To — CONFIRMED ID: ctl00_ContentPlaceHolder1_txtTo
         await self._set_field(page, [
-            "DateTo", "dateTo", "tbDateTo", "EndDate", "StopDate",
-            "dtTo", "Date_To", "date_to", "FileDateTo", "RecordDateTo",
+            "txtTo", "DateTo", "dateTo", "tbDateTo", "EndDate",
         ], portal_to, "DateTo")
 
-        # Instrument Type
+        # Instrument Type — CONFIRMED ID: ctl00_ContentPlaceHolder1_txtInstrument
         await self._set_field(page, [
-            "InstrType", "instrType", "tbInstrType", "InstrumentType",
-            "DocType", "docType", "tbDocType", "instrument_type",
+            "txtInstrument", "Instrument", "InstrType", "InstrumentType", "DocType",
         ], doc_code, "InstrType")
 
         # Search button — confirmed id from run #4 log
@@ -641,10 +638,10 @@ class StaticClerkScraper:
                 **vs,
                 "__EVENTTARGET":   "",
                 "__EVENTARGUMENT": "",
-                "ctl00$ContentPlaceHolder1$tbDateFrom":  self.date_from,
-                "ctl00$ContentPlaceHolder1$tbDateTo":    self.date_to,
-                "ctl00$ContentPlaceHolder1$tbInstrType": doc_code,
-                "ctl00$ContentPlaceHolder1$btnSearch":   "Search",
+                "ctl00$ContentPlaceHolder1$txtFrom":       self.date_from,
+                "ctl00$ContentPlaceHolder1$txtTo":         self.date_to,
+                "ctl00$ContentPlaceHolder1$txtInstrument": doc_code,
+                "ctl00$ContentPlaceHolder1$btnSearch":     "Search",
             }
             resp = self.session.post(url, data=payload, timeout=60)
             resp.raise_for_status()
