@@ -367,83 +367,85 @@ class ClerkScraper:
         except Exception:
             return iso
 
+    async def _dump_inputs(self, page):
+        """Log all input/select IDs on page so we can identify correct field names."""
+        inputs = await page.evaluate("""
+            () => Array.from(document.querySelectorAll('input,select,textarea'))
+              .filter(el => el.id || el.name)
+              .map(el => el.tagName + ' id=' + el.id + ' name=' + el.name + ' type=' + el.type)
+        """)
+        log.info("  === ALL PAGE INPUTS ===")
+        for inp in inputs:
+            log.info("  %s", inp)
+        log.info("  === END INPUTS ===")
+
+    async def _set_field(self, page, fragments: list[str], value: str, field_name: str) -> bool:
+        """Try every id/name fragment until one matches, then fill."""
+        for frag in fragments:
+            for attr in ["id", "name"]:
+                sel = f'input[{attr}*="{frag}"], select[{attr}*="{frag}"]'
+                try:
+                    el = page.locator(sel).first
+                    if await el.count():
+                        actual = await el.get_attribute(attr) or frag
+                        tag = await el.evaluate("el => el.tagName.toLowerCase()")
+                        if tag == "select":
+                            await el.select_option(value=value)
+                        else:
+                            await el.triple_click()
+                            await el.fill(value)
+                        log.info("  %s filled (matched %s='%s')", field_name, attr, actual)
+                        return True
+                except Exception:
+                    continue
+        log.warning("  Could not fill %s — no fragment matched %s", field_name, fragments)
+        return False
+
     async def _fill_rp_form(self, page, doc_code: str):
         """Fill the Real Property search form and submit."""
         portal_from = self._to_portal_date(self.date_from)
         portal_to   = self._to_portal_date(self.date_to)
 
-        # Date From - confirmed pattern: ctl00_ContentPlaceHolder1_*
-        for sel in [
-            '#ctl00_ContentPlaceHolder1_tbDateFrom',
-            '#ctl00_cphBody_tbDateFrom',
-            'input[id*="DateFrom"]',
-            'input[name*="DateFrom"]',
-            'input[id*="tbDate"]',
-        ]:
-            el = page.locator(sel).first
-            if await el.count():
-                log.info("  DateFrom selector matched: %s", sel)
-                await el.triple_click()
-                await el.fill(portal_from)
-                break
-        else:
-            log.warning("  Could not find DateFrom field!")
+        # Dump all inputs on first call so we can read real IDs from the log
+        if doc_code == TARGET_CODES[0]:
+            await self._dump_inputs(page)
+
+        # Date From — try every plausible fragment
+        await self._set_field(page, [
+            "DateFrom", "dateFrom", "tbDateFrom", "BeginDate", "StartDate",
+            "dtFrom", "Date_From", "date_from", "FileDateFrom", "RecordDateFrom",
+        ], portal_from, "DateFrom")
 
         # Date To
-        for sel in [
-            '#ctl00_ContentPlaceHolder1_tbDateTo',
-            '#ctl00_cphBody_tbDateTo',
-            'input[id*="DateTo"]',
-            'input[name*="DateTo"]',
-        ]:
-            el = page.locator(sel).first
-            if await el.count():
-                log.info("  DateTo selector matched: %s", sel)
-                await el.triple_click()
-                await el.fill(portal_to)
-                break
-        else:
-            log.warning("  Could not find DateTo field!")
+        await self._set_field(page, [
+            "DateTo", "dateTo", "tbDateTo", "EndDate", "StopDate",
+            "dtTo", "Date_To", "date_to", "FileDateTo", "RecordDateTo",
+        ], portal_to, "DateTo")
 
         # Instrument Type
-        for sel in [
-            '#ctl00_ContentPlaceHolder1_tbInstrType',
-            '#ctl00_cphBody_tbInstrType',
-            'input[id*="InstrType"]',
-            'input[id*="InstrumentType"]',
-            'select[id*="InstrType"]',
-        ]:
-            el = page.locator(sel).first
-            if await el.count():
-                log.info("  InstrType selector matched: %s", sel)
-                tag = await el.evaluate("el => el.tagName.toLowerCase()")
-                if tag == "select":
-                    try:
-                        await el.select_option(value=doc_code)
-                    except Exception:
-                        await el.select_option(label=doc_code)
-                else:
-                    await el.triple_click()
-                    await el.fill(doc_code)
-                break
-        else:
-            log.warning("  Could not find InstrType field!")
+        await self._set_field(page, [
+            "InstrType", "instrType", "tbInstrType", "InstrumentType",
+            "DocType", "docType", "tbDocType", "instrument_type",
+        ], doc_code, "InstrType")
 
-        # Submit - CONFIRMED ID from live run log: ctl00_ContentPlaceHolder1_btnSearch
+        # Search button — confirmed id from run #4 log
         for sel in [
             '#ctl00_ContentPlaceHolder1_btnSearch',
-            '#ctl00_cphBody_btnSearch',
             'input[id*="btnSearch"]',
             'input[value="Search"]',
+            'button:has-text("Search")',
             'input[type="submit"]',
         ]:
             el = page.locator(sel).first
             if await el.count():
-                log.info("  Search btn selector matched: %s", sel)
+                actual = await el.get_attribute("id") or sel
+                log.info("  Search btn matched: %s", actual)
                 await el.click()
                 break
         else:
             log.warning("  Could not find Search button!")
+
+        await page.wait_for_load_state("networkidle", timeout=45_000)
 
     async def _parse_rp_page(self, page, doc_code: str) -> list[dict]:
         """Extract records from the current result page."""
