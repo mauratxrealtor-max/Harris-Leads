@@ -287,23 +287,42 @@ class ParcelLookup:
         if not self._loaded or not owner:
             return {}
 
+        # If multiple owners separated by ;, try each one
+        if ";" in owner:
+            for part in owner.split(";"):
+                hit = self.lookup(part.strip())
+                if hit and hit.get("prop_address"):
+                    return hit
+            return {}
+
         n = self._normalise(owner)
 
         # 1. Exact match
         if n in self._idx:
             return self._idx[n]
 
-        # 2. Strip EST/ESTATE suffix and try again
-        n_clean = re.sub(r"\b(EST|ESTATE)\b.*", "", n).strip()
+        # 2. Strip suffixes: EST, ESTATE, SR, JR, II, III
+        n_clean = re.sub(r"\s*\b(EST|ESTATE|SR|JR|II|III|IV)\b.*", "", n).strip()
         if n_clean != n and n_clean in self._idx:
             return self._idx[n_clean]
 
-        # 3. Prefix match on first 2 words
+        # 3. HCAD often has "FIRST LAST & SPOUSE" — try matching first 2 words
         parts = n_clean.split()
         if len(parts) >= 2:
-            prefix = " ".join(parts[:2])
+            prefix2 = " ".join(parts[:2])
+            # Fast dict scan — only iterate once
             for key, val in self._idx.items():
-                if key.startswith(prefix):
+                if key.startswith(prefix2) and val.get("prop_address"):
+                    return val
+
+        # 4. Try last name first (HCAD sometimes uses LAST FIRST format)
+        if len(parts) >= 2:
+            reversed_name = f"{parts[-1]} {' '.join(parts[:-1])}"
+            if reversed_name in self._idx:
+                return self._idx[reversed_name]
+            rev_prefix = " ".join(reversed_name.split()[:2])
+            for key, val in self._idx.items():
+                if key.startswith(rev_prefix) and val.get("prop_address"):
                     return val
 
         return {}
