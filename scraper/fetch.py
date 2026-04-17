@@ -403,8 +403,12 @@ class ParcelLookup:
                 hit = self._idx.get(variant)
                 if hit:
                     return hit
-        # Fall back to HCAD web search
-        return self._web_lookup(owner)
+        # Fall back to ArcGIS web lookup
+        time.sleep(0.3)  # rate limit
+        result = self._web_lookup(owner)
+        if result:
+            log.info("  ArcGIS hit: '%s' -> %s", owner[:40], result.get("prop_address",""))
+        return result
 
     def _web_lookup(self, owner: str) -> dict:
         """
@@ -1063,16 +1067,10 @@ async def main():
         if hit:
             rec.update({k: v for k, v in hit.items() if v})
             enriched += 1
-        elif not parcel_db._loaded and web_lookups < 200:
-            # Bulk data unavailable — try web lookup (rate-limited to 50 per run)
-            time.sleep(0.5)  # be polite
-            hit = parcel_db._web_lookup(owner)
-            if hit:
-                rec.update({k: v for k, v in hit.items() if v})
-                enriched += 1
-                log.debug("  Web lookup hit for '%s': %s", owner[:30], hit.get("prop_address",""))
-            web_lookups += 1
-    log.info("Parcel enrichment: %d/%d matched (%d web lookups)", enriched, len(records), web_lookups)
+            if hit.get("prop_address"):
+                log.debug("  Address found for '%s': %s", owner[:30], hit["prop_address"])
+        web_lookups += 1
+    log.info("Parcel enrichment: %d/%d matched (%d lookups)", enriched, len(records), web_lookups)
 
     # 4. Score
     for rec in records:
