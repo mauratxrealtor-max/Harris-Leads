@@ -1,12 +1,12 @@
 {
-  "fetched_at": "2026-04-17T17:36:18.015420Z",
+  "fetched_at": "2026-04-17T17:49:08.097357Z",
   "source": "Harris County Clerk",
   "date_range": {
     "from": "2026-04-03",
     "to": "2026-04-17"
   },
   "total": 77,
-  "with_address": 47,
+  "with_address": 48,
   "records": [
     {
       "doc_num": "RP-2026-141240",
@@ -70,14 +70,14 @@
       "grantee": "CITY OF PEARLAND",
       "amount": null,
       "legal": "Desc: GREEN TEE TERRACE Sec: 2 Reserve: Q Related Docs",
-      "prop_address": "0 EASTEX FWY",
-      "prop_city": "HUMBLE",
+      "prop_address": "0 FRUGE RD",
+      "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "77339",
-      "mail_address": "PO BOX 1562",
-      "mail_city": "HOUSTON",
+      "prop_zip": "77047",
+      "mail_address": "111 E LOCUST ST",
+      "mail_city": "ANGLETON",
       "mail_state": "TX",
-      "mail_zip": "77251-1562",
+      "mail_zip": "77515-4642",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-136113",
       "flags": [
         "Judgment lien",
@@ -148,15 +148,40 @@
       "grantee": "COLEMAN SHERRI HARNAR; HARNAR SHERRI A; HARNAR SHERRI A                     Comment: SEE INSTRUMENT",
       "amount": null,
       "legal": "Comment: SEE INSTRUMENT",
-      "prop_address": "5018 COLLINGSWORTH ST",
+      "prop_address": "0 FIREFLY AVE",
       "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "77026",
-      "mail_address": "7415 N MAIN ST",
+      "prop_zip": "77017",
+      "mail_address": "1100 ORCHID ST",
       "mail_city": "HOUSTON",
       "mail_state": "TX",
-      "mail_zip": "77022-5055",
+      "mail_zip": "77017-5510",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-142532",
+      "flags": [
+        "Judgment lien",
+        "New this week"
+      ],
+      "score": 60
+    },
+    {
+      "doc_num": "RP-2026-141700",
+      "doc_type": "JUD",
+      "filed": "2026-04-14",
+      "cat": "jud",
+      "cat_label": "Judgment",
+      "owner": "HARRIS COUNTY; HOUSTON SPORTS AUTHORITY",
+      "grantee": "JAI LAXMI HOSPITALITY LLC; LA QUINTA LA PORTE; LA QUINTA LA PORTE Desc: LA PORTE   Lot: 1-6 Block: 1100",
+      "amount": null,
+      "legal": "Desc: LA PORTE",
+      "prop_address": "30003 DRAGON FLY DR",
+      "prop_city": "TOMBALL",
+      "prop_state": "TX",
+      "prop_zip": "77377",
+      "mail_address": "P O BOX 1525",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77251-1525",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-141700",
       "flags": [
         "Judgment lien",
         "New this week"
@@ -1187,31 +1212,6 @@
         "New this week"
       ],
       "score": 60
-    },
-    {
-      "doc_num": "RP-2026-141700",
-      "doc_type": "JUD",
-      "filed": "2026-04-14",
-      "cat": "jud",
-      "cat_label": "Judgment",
-      "owner": "HARRIS COUNTY; HOUSTON SPORTS AUTHORITY",
-      "grantee": "JAI LAXMI HOSPITALITY LLC; LA QUINTA LA PORTE; LA QUINTA LA PORTE Desc: LA PORTE   Lot: 1-6 Block: 1100",
-      "amount": null,
-      "legal": "Desc: LA PORTE",
-      "prop_address": "",
-      "prop_city": "Houston",
-      "prop_state": "TX",
-      "prop_zip": "",
-      "mail_address": "",
-      "mail_city": "",
-      "mail_state": "",
-      "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-141700",
-      "flags": [
-        "Judgment lien",
-        "New this week"
-      ],
-      "score": 55
     },
     {
       "doc_num": "RP-2026-143654",
