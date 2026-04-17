@@ -1,11 +1,11 @@
 {
-  "fetched_at": "2026-04-17T14:34:54.311873Z",
+  "fetched_at": "2026-04-17T14:45:43.009841Z",
   "source": "Harris County Clerk",
   "date_range": {
-    "from": "2026-04-10",
+    "from": "2026-04-03",
     "to": "2026-04-17"
   },
-  "total": 43,
+  "total": 76,
   "with_address": 0,
   "records": [
     {
@@ -26,7 +26,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVR7S/7VD4pwVSPLHAlHvXewre49MbVfkTDWi48HwOAskRWFAbNJInKzt3kGiJij9WaY7V8hQ1Kz5IgIGOPRtvCg3g7psQQ14abkjYUm5Xc3bzhNIT+1f+bx1x8DxAgtnLg==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141240",
       "flags": [
         "Judgment lien",
         "LLC / corp owner",
@@ -52,7 +52,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVS60Cyqa0kZxTDVoSxpE3HWI7Nwm/wm8/wk56yxTU1jHmD+1nSGlDN0wFFIru6jPXLTMz4a7XpoenzuV6DJITGTlbOg77ZDpRFuQr/DR5tJ3uSwE7Etb5EANxL6mUlbs9w==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-140719",
       "flags": [
         "Judgment lien",
         "LLC / corp owner",
@@ -78,7 +78,59 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVYN/0hiXYn6RW4+z/czqKJpaMpdnqBsQRHziaQrDpx8Lm4Mmd/YSXvFed5qmWxmaKAlKFuoJSjeSucKcpplV5B6F66ygB/X6WGhacmr/nYhBfUG0S/+2Kobdx813+cBJHQ==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-136113",
+      "flags": [
+        "Judgment lien",
+        "LLC / corp owner",
+        "New this week"
+      ],
+      "score": 65
+    },
+    {
+      "doc_num": "RP-2026-130978",
+      "doc_type": "JUD",
+      "filed": "2026-04-07",
+      "cat": "jud",
+      "cat_label": "Judgment",
+      "owner": "ALL ABOUT PROPERTY LLC",
+      "grantee": "ABAMBA ELIJAH; FAIRLY HALEIGH; FAIRLY HALEIGH                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-130978",
+      "flags": [
+        "Judgment lien",
+        "LLC / corp owner",
+        "New this week"
+      ],
+      "score": 65
+    },
+    {
+      "doc_num": "RP-2026-130977",
+      "doc_type": "JUD",
+      "filed": "2026-04-07",
+      "cat": "jud",
+      "cat_label": "Judgment",
+      "owner": "ALL ABOUT PROPERTY LLC",
+      "grantee": "NELSON JAMAINAYH SHABRE",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-130977",
       "flags": [
         "Judgment lien",
         "LLC / corp owner",
@@ -104,7 +156,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVT0qrr7vdoQmRXMWkAgMwu9MIlvZYR5Wrb9V8c87U36BVqRgH/ibwaNCipQ+FFLG0cF99bRrH7GzaRn6+dgu/nt+BGSCdg0XRQ+wxq2N0BGd4p/q4xujZP58FtOpvju61Q==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-142532",
       "flags": [
         "Judgment lien",
         "New this week"
@@ -129,7 +181,32 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVRz+/bZ/BXJbt7oHIciZhCWN7EveVB3MSDfzQT4XYpNXH3rdX1t2rp1Q2AqEB3rGgrh2Efhf9ixkP7GJKjtauJ/K7hNivhg5mDnnyWOYxWOQPoRvxcU9TXrKqiCHXPqXCg==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141700",
+      "flags": [
+        "Judgment lien",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-133386",
+      "doc_type": "JUD",
+      "filed": "2026-04-08",
+      "cat": "jud",
+      "cat_label": "Judgment",
+      "owner": "HARRIS COUNTY",
+      "grantee": "ALI KARIM R; KAREDIA BARKAT; KAREDIA BARKAT                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT Related Docs",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-133386",
       "flags": [
         "Judgment lien",
         "New this week"
@@ -154,7 +231,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVRB4XIE8+hnzQdB2tCImjtK5YzYBZBTZbi3BOq4qFxLiEbmTi2VzdZ2tlY8IZzQTrvii3EFKY65MUqb3g2juDGhIFa5rmPiYTMoSqN8kB9NRvYG46kZN9GdpFqUkDb8huQ==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-145640",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -179,7 +256,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVRZlccGZzCl0NEcSaPGqVtwNMXv5KqFkUfqdLwhNp4a1cxv3ivqxeqhJ8nrHU4vHN7zYVED22BZneSCPtUV4R3Kls8VNvDCv1VC3MgGogFcQuozUsDTcFbcTof1BgbQZ2Q==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-143877",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -204,7 +281,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVWm5jfxTNLkPGOEwjSedfE+cAZuMkjPgcBWI89tw7+6ri3dgpZB1vOdWXWTJS8sabblD2a6cD6gMFRwAwqG9Ssjo43W9mkxVP1c8D+XQ33vg9cXDjysWMhKIEoVFSNAKkg==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-143678",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -229,7 +306,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVeNuOFakciRh7ufQunP0yCFz8LapkMbTjblkVN8radn1VNIvHjE9dV5nis7afUSS1o9hKkjTgl76d//YikoNPNnUjHUrE0g3gxLZJQOb8XqRXki4rFySeidhEKrrXj0HNA==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-143654",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -254,7 +331,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVeC7V/A2/tichXQToiKQb0OzyiUxPuqTmvSiNfclhRW7PRJhgZlJxgrw81Ct0noHocMduo0mXj2sxSqlmbPokE//Krq94hKXiN4LMZTm3JhyruRZQo0DFLaR2DnkXwo3Xg==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-143653",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -279,7 +356,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVbj+wAHX+gMHJd2wj5pJOJakhYiJWzK0QuXbfjWsy8hi2TG3fB6KoAOy37hcCcRQf14TK0rWrRqwaGxZRnYIGyTsMZvdU6j4WVJv9s+GrxkxWbV+R9eTYg5jAzBwOlQ7lA==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-143114",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -304,7 +381,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVQKU7SeGS8KPOwYURdtqb+p+G+VvxeSrJLLeb2GAu7nYCw248Uh1hNaXP0nX1RbfpJd5m9/glCetl1QMzR7caimPLtosyE3TAggMd4PhHPZzJva78G+qOiw76JD+ieYkfA==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-142610",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -329,7 +406,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVeIuQQTRJfeZMr3J/2qA3H1pJztNW2NKdXaOjtFZXEZ+Kt7vWSyzEDz+GCqXSxu6C7otUxfxPs6HRqf7V0DwSlDR2HFMrllD7yxlg1IbYCr72JCTNEmnE/RJALZjyOuDpw==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-142240",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -354,7 +431,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVQeMyAY1DfVLOhNZzOFtrtDsH6JSeNSYtf9MoPLMSQsRaf9AeEa6SMHjNU7ToMxb+h//foZDEFS0xSiRnmGjko5Rqvc2yhsTqm033upww7octsaVBd70BzExNOzsVQQB+Q==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-142239",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -379,7 +456,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVb97KKQJycvi6s60pgB5DyiT9J95GP7JRKg5m1eH5t5bqdrO8ZFysQLc//oJ13buXnOGzb+WloQcNvlMMTWgvIWe0dT8vGfrNgS6wzo5hNJAGKpKFOs/t7R5wez7wqHJOw==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141949",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -404,7 +481,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVYFWVqRscjY3fZArQ74xT5wRzFcM2/irxX6FVEpViVg/WNVDT+xUspshEqKL0i0pJWDWZg4so6W8EC92RxzCN10I7mEhZC0Gh6dLKUiyr+SbvoLBP+4OzhOU92677kVDCw==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141948",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -429,7 +506,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVSBfm26WYNntamWScAIfEJymLALKEYnLGTB6rHSssuEqm8JvDBP42hbfJx24SyjkN94u+d5bktyq/iG2MWNa7YizIIK6wJI5oFbk4D/p2pMRaHODAtdw7kPFs7WHOJyZoQ==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141772",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -454,7 +531,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVfmtx7Mc4Vehu9MkPxW6Xe8OggRGlKy/j/yzJERQpIi5NQ8pYS4j4SJsqgPnky93h94iBQyzI4kLtv7R+KQpnTzhy4YJ7cm+8rexfCL8qT6qq0EKCFDT8G/IXU6+BcSC8A==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141759",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -479,7 +556,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVcABAR8GUnQFzspoFglCHvilAUFPEdr2jp70LqEtmehwk/6NDejrsLmj0SKc7UkDiZDrL5nCx06ncgLAKF+4eCrWOMo1v2+0TLkJcmpwBY3erOVJOiWu+dsD8xqwvu+97Q==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141740",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -504,7 +581,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVRgm+hIg8Uxk9o8DY1fKSMkqMRdKpJyqCa41q9u65p5gL8BFfm4PmC5hZhSQVazi/gxOCpn0AFyUS3EfEj+3jmTMilrgc69g25IgHRfzJUojq9ZTs/LMRjpw2ajR+AdE5g==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141466",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -529,7 +606,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVWlmPWUDPAyyI/ZBdb5xh5pg8uu8WNavpZ0uRYH0KTFgNqdMLJRGp5y+JHMv4GZMcSNZXNR4+3B1r3HWIFw5/QPOKBktNK8ilYyshpg8Ml6JEJZiKjQXxgK1zTl0Z59lcg==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141153",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -554,7 +631,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVWNBpy219dYDfAhDx459aN5tMtbaDjgjFcQ5NrMFJ3SKfI8DzI6zXV0SMUE7Orb5NlB8CyDiajWhkttQjOu4hCc49sZgPoUBn1GJl6chEhhn8ji3Wba6JHRwKg1Ap3hWIA==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141097",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -579,7 +656,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVZrEby0IBn3eSct4IdbJIvpo4CP6oyzwz+5hY+RJM0IJaUzvL9eSmaGT4mAQkhBkRBXOHcE4mqgKuUgy3nA0B4E/G5ax33h1VrL1rSBW3by0YqhEm2K4ha/u6YqZIRaZIA==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141096",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -604,7 +681,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVY/zCLCOLyki/vwTyce6WYwSLHy0AWy+s/C8m9IVivrLj/8NQ5jj2Izh/WwcstXkbFKiGl0CisGoNHmTWo72Pwqz+L13VE3ZBJGjYrvzkARH/PAni4tgbbdZtZ0TxQRqnA==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141095",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -629,7 +706,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVb+BER4i6M9dT5yzzJqMLAKN6Az1ha/Zt2OfnWByR0fEQLnr9pqgoFKrkfT9SKlAXtajGzs8F+eQDMb02MF9MYgWMdisjNxtjM1zBWFgZSy/f0Pp2KltpkibcxR4HS4cgg==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141094",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -654,7 +731,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVSpkhGkZ6OPsiDA3UqqOBM/Hsss+OK5sqhHehJuKA55sXGajEdbnQVW56+81oAYKylElKlUb9H06PqvLopCfbDlrTOVxWkfjjZrPBfiZwZKoYHAX6EQRutUH+gmKbA3gJg==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141093",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -679,7 +756,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVQMQ0LoaAV7/mR3B7lnckoW3R1SVaLT+C/69IJzvhis9POkQhXLKBs4ehrWD0HL6defZJBwfPEwp8YJaVJrNIoLpKgxURQ3Qalmw+WPY+5M7VpRNGbeYkc9YEyZZddqXfw==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141013",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -704,7 +781,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVTg9zdroB0Cz5KiuXZu27qmQf5DmhBW4vvQJqfQou3qHBtfS6oW5SgB+HQpcg76unPN/hlF/v7wzb4XWJIn4+azr+PZnURlLdMUXFsHhsNzdrnDI0L/nYHMZ467bmN+EAQ==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141003",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -729,7 +806,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVRB1V4dvbQig2VG1TjoJETBr/PjjbtsbFpXtyjXnGKmMcluoIwEB574bb6VFwouKHJNPo7N3oC454Tx2KEKMnxPXbXEJvXv3r8Pwd+v+6YmSbcty5DHWu0dxabMdJwL4fQ==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-141002",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -754,7 +831,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVe3aOCFGXK31wVe0EBwQUC+qV2KqSMB0co8Nr3wobLbAaFybilTB2f7LLX2S4wpP/5+FzHktN59FcIMQZH3+DYMnbs3gqdf7qq0wH+3tf14YCjN7/zx0r4ImDwbzpiPEvA==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-140987",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -779,7 +856,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVfg1/G4GKgaOp7/SYoXzSTg43DVCTiuabXZHe78g8UwVek2F4lQ3sO5mEgTNSB508IP/2TlsB6HPsVK1kcyCcuig3KjCwm7sAdjXqsbdp8Llve6s+4hskpTfMnKPNJ22NA==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-140488",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -804,7 +881,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVQFjAeHeM4KEsqFEkHQBIj06j+v6c4IbSdErP8fccNWmt+sJN4erSpuLrlg2fxj4y+lAhw1HRVyTG1g75L4DZXK2TKwx6iFyV5wj1h7UZU4llez3LdboW3KNAot960w4SA==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-140487",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -829,7 +906,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVVgBk5naXbNl02j9Mk47u1tY4rdsPsHPo4yyLS7uDAhHJdbQYosTFGkDwpoUqn9HnQYDKTTua/1MO5XUtGhz9tbT/570+dcowoWIqCiIBXmkegyFyOaHiIKAjqbx6raaZQ==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-140395",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -854,7 +931,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVdKSDpkYHZmdWV00d0clbas89nczt7F3ALxAcNn49xvnnz1HQD8DE3iiOsjCXlpDIUq9jQLjIVcsFP57Oa0IRd8aMOK9JaDVh7S16bVMGVoMLmzN5EfOM1crlEgcIwr+KA==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-140394",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -879,7 +956,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVfLdO01yODAT1TD+kgWUFDPMKICws4cwcF1Ms9F//VrMStBD8w7NRCmiZfJfcmv1+GIpLGbbwyX2hW2JAmpbwaX4Ur4XO1q9n7zyZKFnPgfjcSHvKj3SfH5k6NEpd2ED5g==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-140057",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -904,7 +981,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVYNUUjmYg6rWj6kMc50GjrGjX8SxMRdXQMwqW1ludbyg6hETsKipJgOY8fdugD4fKG2NYROg36P1HMtDhTCaUkC37fUlq1XlpegvtmSFEWamL+vzkI4z4bHctgLeL5OUiQ==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-139027",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -929,7 +1006,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVcHQo301ohGUsxdi6qzh42QG5AOb5IWri98RSxmwryCJ2n8CxSeoK/K12xsudhDp/mYc3Pr2hW9LaR17uxV1vHHlji612HIOE8qKoDcM95N62Tggb/jYRCrvQLZ+qyjErg==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-138137",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -954,7 +1031,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVZPHenyO1/iMPX3u336dmxvqcxEr7KkDZtOIo4Qlroa/MQy3sGZU3UgnWvbsTOFb97QZBVFt4O/UXCMUrIata2la7/HKv7pLOBV+3NkIzUqjjR2XDFRHtJzrzlRhGd2KSA==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-138136",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -979,7 +1056,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVQm2owbrOuEwH2/UHqLzE9x7YZciiIrc1gOMl2C1WkUsDRiILQ2K7yJk8DyKVjFiGOU3l4iWQ20t8YsHJ3EBZliU5LHRF2x27uDKKkkgxtTN8PA63G3UzUrKcDwhV3Vnig==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-136634",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -1004,7 +1081,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVcaH9NYneNxaaQ50oblcIUWsPhAm6n1BdVLn527Cni4d3+CnombTGLEQiODBCLOAif9LxmN4qU5c8IEzHLnFX5Zv/oHLHD1xnphXFmj4dB4RPxZBDDU7jDGU4dNN+r2xeQ==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-136576",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -1029,7 +1106,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVYowwPQy/Ac2HBIhupyf1GWOIQAFNgSpDPnDotlL3nP6C69jOw0TJxPIcvIh0T1ROBhtI6mZTrl6VRLffKOoqHPGhhr6DItFoBgUzRVhh1qdMgOPfnVF8ve6wqj1sh7lJQ==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-136451",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -1054,7 +1131,7 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVQQ9fdUFXrwm4gn0eGyQ9QphW3bjnrbAO/hvB58z7lY/KBYC5qMpKXgfcyYF+5PbY5Xlc9fm5wKCNwx39mYyEWx7viqqE1AppGpBbz9g2xZfgGXN8ojeUEOyz33oM8ZTCw==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-136450",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -1079,7 +1156,757 @@
       "mail_city": "",
       "mail_state": "",
       "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/EComm/ViewEdocs.aspx?ID=ihpahpMbvcoWkF5RdbzIVafgf+1Ql+Lz8M5AUT+mK1MyNC/n1Dy+HHO/iHb9cDQm7cCAIY4RDQWyCFQMWBBt636BZBwBFei6knzxm2HdJHq2UWky/IeNW6qAbzqNZqbkXm+prMugn0aBzMECQiqLJw==",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-136358",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-135502",
+      "doc_type": "PRO",
+      "filed": "2026-04-09",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "ESTATE OF DARLENE DELORES KLEIN LUEBE",
+      "grantee": "LUEBE JACKSON PEGGY ANN; LUEBE MICHAEL JOHN; LUEBE TIMOTHY DEAN",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-135502",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-134557",
+      "doc_type": "PRO",
+      "filed": "2026-04-09",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "CORONADO GUADALUPE EST",
+      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-134557",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-134217",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "MCNAIR SYBIL MATHIS EST",
+      "grantee": "CONN DEBRA LEE; MCNAIR MAC; MCNAIR RUSE FOSTER III; MCNAIR RUSE FOSTER JR; MCNAIR SCOTT ALEXANDER",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-134217",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-134195",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "BLUM MITCHELL AARON EST",
+      "grantee": "BLUM AARON ANTHONY; BLUM-RUSCIANO CATHRYN R",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-134195",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-134056",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "GOSS LENARD C EST",
+      "grantee": "GOSS OLLIE VERNELL; PETERSON MASON A; WILLIAMS CHARLES W",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-134056",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-134039",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "GOETZ JOHN HOWARD EST",
+      "grantee": "FORTEZA LESLIE DEE; GOETZ VERDA YVONNE; LEBLANC CARLA RAY; LIGHT SHERRY LYNDA",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-134039",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-134004",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "PANDO OCTAVIO EST",
+      "grantee": "PANDO RITA; PANDO RITA                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-134004",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-134003",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "PANDO OCTAVIO EST",
+      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-134003",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-133714",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "MORENO PETRA SALCIDO EST",
+      "grantee": "MORENO DAVID SALCINO; MORENO PILAR; MORENO PILAR                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-133714",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-133666",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "ESTATE OF MARK B BARTOSIK",
+      "grantee": "BARTOSIK MARK J; BARTOSIK MARK J                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-133666",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-133438",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "RODRIGUEZ MATTHEW C",
+      "grantee": "GUTIERREZ VICTORIA EST; GUTIERREZ VICTORIA R EST",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-133438",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-133437",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "BARAJAS ELIZABETH",
+      "grantee": "GUTIERREZ VICTORIA EST; GUTIERREZ VICTORIA R EST",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-133437",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-133436",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "RODRIGUEZ LINDA Q",
+      "grantee": "GUTIERREZ VICTORIA EST; GUTIERREZ VICTORIA R EST",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-133436",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-133223",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "MARIN ROSA NELY EST",
+      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-133223",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-133222",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "MARIN ROSA NELY EST",
+      "grantee": "DEL CARMEN PALENCIA ROSARIO; DEL CARMEN PALENCIA ROSARIO Desc: MOODY L B   Lot: 6 Block: 2",
+      "amount": null,
+      "legal": "Desc: MOODY L B",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-133222",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-132843",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "STEAGALL ALLAN JOB EST",
+      "grantee": "ERWIN SADINA LORENE; MAYEAUX WESLEY JOB; MORRISON ALESIA MARIE; MORRISON MARGARET ELAINE; MORRISON SADINA MARIE; SMITH MELISSA LORENE; STEAGALL JUANITA LORENE; STEAGALL WILLIAM WAYNE",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-132843",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-132427",
+      "doc_type": "PRO",
+      "filed": "2026-04-07",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "IRWIN ELSIE J EST",
+      "grantee": "IRWIN DAVID G; LINEBERRY SUSAN IRWIN",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-132427",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-130812",
+      "doc_type": "PRO",
+      "filed": "2026-04-07",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "VEGA TORAL ANTHONY EST",
+      "grantee": "VEGA LYNN MARIE; VEGA LYNN MARIE                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-130812",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-130549",
+      "doc_type": "PRO",
+      "filed": "2026-04-07",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "WINGFIELD JOEL D EST",
+      "grantee": "ALLEGA MELISSA J; WINGFIELD SHIRLYNN",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-130549",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-130528",
+      "doc_type": "PRO",
+      "filed": "2026-04-07",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "BODDY PARIS EDWARD EST",
+      "grantee": "BODDY ANITA JOSEPHINE; BODDY CARL FRANKLIN; BODDY GREGORY FRANCIS; BODDY JANICE LANELL; BODDY JOSEPH AUGUSTINE; BODDY LOUIS ANTHONY; BODDY MARY ELIZABETH; BODDY PAUL EDWARD; BODDY STEPHEN THOMAS; BODDY-BROWNING STEPHANIE LYNNETTE; BROWNING NOAH DAVID",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-130528",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-130255",
+      "doc_type": "PRO",
+      "filed": "2026-04-07",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "RICARD THOMAS M EST",
+      "grantee": "RICARD BARBARA M; RICARD DANIEL; RICARD DANIEL                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-130255",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-130254",
+      "doc_type": "PRO",
+      "filed": "2026-04-07",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "RICARD THOMAS M EST; RICARD THOMAS MILTON EST",
+      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-130254",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-129737",
+      "doc_type": "PRO",
+      "filed": "2026-04-06",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "PALM CYNTHIA ANN EST",
+      "grantee": "PALM ANDRE DUANE; PALM CAREY DION; PALMS CAREY DEON; PALMS CAREY DEON                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-129737",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-129643",
+      "doc_type": "PRO",
+      "filed": "2026-04-06",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "WILLIAMS FRANCES MARIE LOCHABAY EST",
+      "grantee": "WILLIAMS JESSE ANDREW; WILLIAMS MARK ALAN",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-129643",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-129642",
+      "doc_type": "PRO",
+      "filed": "2026-04-06",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "WILLIAMS FRANCES MARIE EST; WILLIAMS FRANCES MARIE LOCHABAY EST",
+      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-129642",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-128678",
+      "doc_type": "PRO",
+      "filed": "2026-04-06",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "SONGER STEPHEN R EST",
+      "grantee": "DEBELLO SUMMER A; MCDONALD-SONGER CYNTHIA J; SMITH SHAWN M; SONGER STEPHEN R II; WILLIAMS AMBER N; WILLIAMS AMBER N                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-128678",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-128176",
+      "doc_type": "PRO",
+      "filed": "2026-04-06",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "GAUDIN JANICE COLLINS EST",
+      "grantee": "GAUDIN ANDRE; GAUDIN HILARY G; GAUDIN PIERRE F JR; GAUDIN PIERRE F SR",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-128176",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-128175",
+      "doc_type": "PRO",
+      "filed": "2026-04-06",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "GAUDIN PIERRE F SR EST",
+      "grantee": "GAUDIN ANDRE; GAUDIN HILARY G; GAUDIN PIERRE F JR",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-128175",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-126882",
+      "doc_type": "PRO",
+      "filed": "2026-04-06",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "SUSHOLTZ KATHY TREADWAY EST",
+      "grantee": "HUMANE SOCIETY OF HOUSTON; ISID SUSANNE SUSHOLTZ; JUVENILE DIABETES FOUNDATION; SANTILLAN CAROLINE SUSHOLTZ; SEFCIK PEGGY; SUSHOLTZ WILLIAM MARBLE",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-126882",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-126854",
+      "doc_type": "PRO",
+      "filed": "2026-04-06",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "KUPER MONTY EST",
+      "grantee": "KUPER IVAN; KUPER JEFFREY; KUPER JULIE; NEIDER DUSTIN; NEIDER LEVI; WEINGARTEN MERITT; WEINGARTEN MERITT                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?FileNo=RP-2026-126854",
       "flags": [
         "Probate / estate",
         "New this week"
