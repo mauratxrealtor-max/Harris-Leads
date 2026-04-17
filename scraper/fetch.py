@@ -236,51 +236,52 @@ class ParcelLookup:
 
     def load(self):
         """Load the pre-built HCAD lookup CSV from the data/ directory."""
-        candidates = [
-            ROOT / "data" / "hcad_lookup.csv.gz",
-            ROOT / "scraper" / "hcad_lookup.csv.gz",
-            TMP_DIR / "hcad_lookup.csv.gz",
-        ]
-        csv_path = None
-        for c in candidates:
-            if c.exists() and c.stat().st_size > 1000:
-                csv_path = c
-                break
+        # Support both single file and 3-part split
+        single = ROOT / "data" / "hcad_lookup.csv.gz"
+        parts  = [ROOT / "data" / f"hcad_lookup_part{i}.csv.gz" for i in range(1, 4)]
 
-        if not csv_path:
-            log.warning("hcad_lookup.csv.gz not found — address enrichment disabled.")
+        files_to_load = []
+        if single.exists() and single.stat().st_size > 1000:
+            files_to_load = [single]
+        else:
+            files_to_load = [p for p in parts if p.exists() and p.stat().st_size > 1000]
+
+        if not files_to_load:
+            log.warning("No hcad_lookup*.csv.gz files found in data/ — address enrichment disabled.")
             return
 
-        log.info("Loading HCAD lookup: %s (%d bytes)", csv_path, csv_path.stat().st_size)
+        import gzip as gz
         count = 0
-        try:
-            import gzip as gz
-            opener = gz.open if str(csv_path).endswith(".gz") else open
-            with opener(csv_path, "rt", encoding="utf-8", errors="replace") as fh:
-                reader = csv.DictReader(fh)
-                for row in reader:
-                    owner = (row.get("owner") or "").strip().upper()
-                    if not owner:
-                        continue
-                    parcel = {
-                        "prop_address": (row.get("site_addr") or "").strip(),
-                        "prop_city":    (row.get("site_city") or "Houston").strip(),
-                        "prop_state":   "TX",
-                        "prop_zip":     (row.get("site_zip") or "").strip(),
-                        "mail_address": (row.get("mail_addr") or "").strip(),
-                        "mail_city":    (row.get("mail_city") or "").strip(),
-                        "mail_state":   (row.get("mail_state") or "TX").strip(),
-                        "mail_zip":     (row.get("mail_zip") or "").strip(),
-                    }
-                    if parcel["prop_address"]:
-                        self._idx[owner] = parcel
-                        count += 1
-        except Exception as exc:
-            log.error("Failed to load HCAD lookup CSV: %s", exc)
-            return
+        for csv_path in files_to_load:
+            log.info("Loading HCAD lookup: %s (%d bytes)", csv_path.name, csv_path.stat().st_size)
+            try:
+                with gz.open(csv_path, "rt", encoding="utf-8", errors="replace") as fh:
+                    reader = csv.DictReader(fh)
+                    for row in reader:
+                        owner = (row.get("owner") or "").strip().upper()
+                        if not owner:
+                            continue
+                        parcel = {
+                            "prop_address": (row.get("site_addr") or "").strip(),
+                            "prop_city":    (row.get("site_city") or "Houston").strip(),
+                            "prop_state":   "TX",
+                            "prop_zip":     (row.get("site_zip") or "").strip(),
+                            "mail_address": (row.get("mail_addr") or "").strip(),
+                            "mail_city":    (row.get("mail_city") or "").strip(),
+                            "mail_state":   (row.get("mail_state") or "TX").strip(),
+                            "mail_zip":     (row.get("mail_zip") or "").strip(),
+                        }
+                        if parcel["prop_address"]:
+                            self._idx[owner] = parcel
+                            count += 1
+            except Exception as exc:
+                log.error("Failed to load %s: %s", csv_path.name, exc)
 
-        log.info("HCAD lookup loaded: %d records", count)
-        self._loaded = True
+        if count > 0:
+            log.info("HCAD lookup loaded: %d records from %d file(s)", count, len(files_to_load))
+            self._loaded = True
+        else:
+            log.warning("HCAD lookup loaded 0 records — address enrichment disabled.")
 
     def lookup(self, owner: str) -> dict:
         if not self._loaded or not owner:
