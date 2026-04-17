@@ -412,32 +412,107 @@ class ParcelLookup:
 
     def _web_lookup(self, owner: str) -> dict:
         """
-        Look up parcel address via Harris County GIS ArcGIS REST API.
-        Endpoint: https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query
-        Fields confirmed: owner_name_1, site_addr_1, site_city, site_zip,
-                          mail_addr_1, mail_city, mail_state, mail_zip
-        This API is public and requires no authentication.
+        Look up address via Harris County Tax Office property search.
+        Uses hctax.net which has a simpler, less restricted search.
         """
         try:
             name = self._normalise(owner)
-            # Strip suffixes
             name = re.sub(r'\b(EST|ESTATE|TRUST|LLC|INC|CORP|LTD|LP|SR|JR|II|III|PLLC|LLP)\b', '', name).strip()
-            parts = name.split()[:3]
+            parts = name.split()[:2]  # Use first 2 words for better matching
             search_name = " ".join(parts)
             if len(search_name) < 3:
                 return {}
 
-            # ArcGIS REST API query — LIKE search on owner_name_1
+            # Harris County Tax Office — owner name search
+            url = "https://www.hctax.net/property/search"
+            params = {"searchTerm": search_name, "searchType": "owner"}
+            resp = requests.get(url, params=params, timeout=15, headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/122.0",
+                "Accept": "application/json, text/plain, */*",
+                "Referer": "https://www.hctax.net/",
+            })
+            if resp.status_code != 200:
+                return {}
+
+            # Try JSON response first
+            try:
+                data = resp.json()
+                results = data if isinstance(data, list) else data.get("results", data.get("data", []))
+                if results:
+                    r = results[0] if isinstance(results, list) else results
+                    addr = (r.get("siteAddress") or r.get("address") or
+                            r.get("SiteAddress") or r.get("propertyAddress") or "")
+                    city = (r.get("siteCity") or r.get("city") or "Houston")
+                    if addr and re.match(r'\d+', addr):
+                        return {
+                            "prop_address": addr.strip(),
+                            "prop_city":    city or "Houston",
+                            "prop_state":   "TX",
+                            "prop_zip":     str(r.get("siteZip") or r.get("zip") or "").strip(),
+                            "mail_address": str(r.get("mailAddress") or "").strip(),
+                            "mail_city":    str(r.get("mailCity") or "").strip(),
+                            "mail_state":   str(r.get("mailState") or "TX").strip(),
+                            "mail_zip":     str(r.get("mailZip") or "").strip(),
+                        }
+            except Exception:
+                pass
+
+            # Try HTML parsing
+            soup = BeautifulSoup(resp.text, "lxml")
+            for row in soup.find_all("tr"):
+                cells = [td.get_text(" ", strip=True) for td in row.find_all("td")]
+                for cell in cells:
+                    if re.match(r'^\d{2,5}\s+[A-Z]', cell.upper()) and len(cell) > 8:
+                        return {
+                            "prop_address": cell.strip(),
+                            "prop_city":    "Houston",
+                            "prop_state":   "TX",
+                            "prop_zip":     "",
+                            "mail_address": "", "mail_city": "",
+                            "mail_state": "TX", "mail_zip": "",
+                        }
+        except Exception as exc:
+            log.debug("Tax office lookup failed for '%s': %s", owner, exc)
+        return {}
+
+    def _lookup_by_legal(self, legal: str) -> dict:
+        """
+        Extract subdivision/lot/block from legal description and
+        query HCAD ArcGIS for matching parcels.
+        """
+        if not legal:
+            return {}
+        try:
+            # Extract subdivision name
+            subdiv_m = re.search(r'Desc:\s*([A-Z][A-Z0-9\s]{3,40}?)(?=\s*(?:Lot:|Block:|Sec:|$))', legal)
+            lot_m    = re.search(r'Lot:\s*([\w\-]+)', legal)
+            block_m  = re.search(r'Block:\s*([\w\-]+)', legal)
+
+            if not subdiv_m:
+                return {}
+
+            subdiv = subdiv_m.group(1).strip()
+            lot    = lot_m.group(1).strip() if lot_m else ""
+            block  = block_m.group(1).strip() if block_m else ""
+
+            # Build WHERE clause for ArcGIS
+            where_parts = [f"subdiv_nm LIKE '{subdiv}%'"]
+            if lot:
+                where_parts.append(f"LOT_NUM = '{lot}'")
+            if block:
+                where_parts.append(f"BLK_NUM = '{block}'")
+            where = " AND ".join(where_parts)
+
             url = "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query"
             params = {
-                "where":         f"owner_name_1 LIKE '{search_name}%'",
-                "outFields":     "owner_name_1,site_addr_1,site_city,site_zip,mail_addr_1,mail_city,mail_state,mail_zip",
-                "returnGeometry": "false",
-                "f":             "json",
-                "resultRecordCount": 1,
+                "where":              where,
+                "outFields":          "owner_name_1,site_addr_1,site_city,site_zip,mail_addr_1,mail_city,mail_state,mail_zip",
+                "returnGeometry":     "false",
+                "f":                  "json",
+                "resultRecordCount":  1,
             }
             resp = requests.get(url, params=params, timeout=15, headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+                "User-Agent": "Mozilla/5.0"
             })
             if resp.status_code != 200:
                 return {}
@@ -463,7 +538,7 @@ class ParcelLookup:
                 "mail_zip":     str(attrs.get("mail_zip") or "").strip(),
             }
         except Exception as exc:
-            log.debug("ArcGIS lookup failed for '%s': %s", owner, exc)
+            log.debug("Legal lookup failed: %s", exc)
         return {}
 
 
@@ -1064,11 +1139,17 @@ async def main():
         if not owner:
             continue
         hit = parcel_db.lookup(owner)
-        if hit:
+        # If no hit by owner name, try by legal description
+        if not hit or not hit.get("prop_address"):
+            legal = rec.get("legal", "")
+            if legal:
+                hit2 = parcel_db._lookup_by_legal(legal)
+                if hit2 and hit2.get("prop_address"):
+                    hit = hit2
+        if hit and hit.get("prop_address"):
             rec.update({k: v for k, v in hit.items() if v})
             enriched += 1
-            if hit.get("prop_address"):
-                log.debug("  Address found for '%s': %s", owner[:30], hit["prop_address"])
+            log.info("  Address: '%s' -> %s", owner[:30], hit["prop_address"])
         web_lookups += 1
     log.info("Parcel enrichment: %d/%d matched (%d lookups)", enriched, len(records), web_lookups)
 
