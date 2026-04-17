@@ -481,19 +481,17 @@ class ClerkScraper:
         log.warning("  Could not fill %s — tried fragments: %s", field_name, fragments)
         return False
 
-    async def _fill_rp_form(self, page, doc_code: str):
+    async def _fill_rp_form(self, page, doc_code: str, url: str = ""):
         """Fill the Real Property search form and submit."""
         portal_from = self._to_portal_date(self.date_from)
         portal_to   = self._to_portal_date(self.date_to)
 
-        # Wait for form — use different known field per page type
-        known_field = (
-            '#ctl00_ContentPlaceHolder1_txtFrom'
-            if url == CLERK_RP_URL
-            else '#ctl00_ContentPlaceHolder1_txtBegDate, #ctl00_ContentPlaceHolder1_txtFrom'
-        )
+        # Wait for form to be ready
         try:
-            await page.wait_for_selector(known_field, state="attached", timeout=15_000)
+            await page.wait_for_selector(
+                '#ctl00_ContentPlaceHolder1_txtFrom',
+                state="attached", timeout=15_000
+            )
         except Exception:
             log.warning("  Form not ready after 15s — proceeding anyway")
 
@@ -651,7 +649,7 @@ class ClerkScraper:
                 # Wait for full JS render — portal uses ASP.NET UpdatePanels
                 await page.wait_for_load_state("networkidle", timeout=30_000)
                 await asyncio.sleep(2)  # extra buffer for JS to finish rendering form
-                await self._fill_rp_form(page, doc_code)
+                await self._fill_rp_form(page, doc_code, url)
                 return await self._paginate(page, doc_code)
             except Exception as exc:
                 log.warning("Attempt %d scraping %s: %s", attempt, doc_code, exc)
