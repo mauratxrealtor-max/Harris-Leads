@@ -229,6 +229,7 @@ class ParcelLookup:
 
     def __init__(self):
         self._idx: dict[str, dict] = {}
+        self._prefix_idx: dict[str, dict] = {}  # 2-word prefix -> first matching parcel
         self._loaded = False
 
     def _normalise(self, name: str) -> str:
@@ -236,7 +237,6 @@ class ParcelLookup:
 
     def load(self):
         """Load the pre-built HCAD lookup CSV from the data/ directory."""
-        # Support both single file and 3-part split
         single = ROOT / "data" / "hcad_lookup.csv.gz"
         parts  = [ROOT / "data" / f"hcad_lookup_part{i}.csv.gz" for i in range(1, 4)]
 
@@ -273,12 +273,18 @@ class ParcelLookup:
                         }
                         if parcel["prop_address"]:
                             self._idx[owner] = parcel
+                            # Build 2-word prefix index for fast fuzzy matching
+                            words = owner.split()
+                            if len(words) >= 2:
+                                prefix = f"{words[0]} {words[1]}"
+                                if prefix not in self._prefix_idx:
+                                    self._prefix_idx[prefix] = parcel
                             count += 1
             except Exception as exc:
                 log.error("Failed to load %s: %s", csv_path.name, exc)
 
         if count > 0:
-            log.info("HCAD lookup loaded: %d records from %d file(s)", count, len(files_to_load))
+            log.info("HCAD lookup loaded: %d records, %d prefixes", count, len(self._prefix_idx))
             self._loaded = True
         else:
             log.warning("HCAD lookup loaded 0 records — address enrichment disabled.")
@@ -287,7 +293,7 @@ class ParcelLookup:
         if not self._loaded or not owner:
             return {}
 
-        # If multiple owners separated by ;, try each one
+        # Handle multiple grantors separated by ;
         if ";" in owner:
             for part in owner.split(";"):
                 hit = self.lookup(part.strip())
@@ -301,29 +307,25 @@ class ParcelLookup:
         if n in self._idx:
             return self._idx[n]
 
-        # 2. Strip suffixes: EST, ESTATE, SR, JR, II, III
+        # 2. Strip common suffixes
         n_clean = re.sub(r"\s*\b(EST|ESTATE|SR|JR|II|III|IV)\b.*", "", n).strip()
         if n_clean != n and n_clean in self._idx:
             return self._idx[n_clean]
 
-        # 3. HCAD often has "FIRST LAST & SPOUSE" — try matching first 2 words
+        # 3. Fast 2-word prefix lookup (O(1) using prefix index)
         parts = n_clean.split()
         if len(parts) >= 2:
-            prefix2 = " ".join(parts[:2])
-            # Fast dict scan — only iterate once
-            for key, val in self._idx.items():
-                if key.startswith(prefix2) and val.get("prop_address"):
-                    return val
+            prefix2 = f"{parts[0]} {parts[1]}"
+            hit = self._prefix_idx.get(prefix2)
+            if hit and hit.get("prop_address"):
+                return hit
 
-        # 4. Try last name first (HCAD sometimes uses LAST FIRST format)
+        # 4. Try reversed name (LAST FIRST -> FIRST LAST)
         if len(parts) >= 2:
-            reversed_name = f"{parts[-1]} {' '.join(parts[:-1])}"
-            if reversed_name in self._idx:
-                return self._idx[reversed_name]
-            rev_prefix = " ".join(reversed_name.split()[:2])
-            for key, val in self._idx.items():
-                if key.startswith(rev_prefix) and val.get("prop_address"):
-                    return val
+            rev = f"{parts[-1]} {parts[0]}"
+            hit = self._prefix_idx.get(rev)
+            if hit and hit.get("prop_address"):
+                return hit
 
         return {}
 
