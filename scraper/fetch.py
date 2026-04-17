@@ -408,48 +408,53 @@ class ParcelLookup:
 
     def _web_lookup(self, owner: str) -> dict:
         """
-        Look up address via HCAD public property search.
-        Uses the owner name search at hcad.org/quicksearch.
-        Rate-limited to avoid overloading — only called when bulk index unavailable.
+        Look up address via HCAD public property search API.
         """
         try:
-            # Normalise name for HCAD search (Last First format, no punctuation)
             name = self._normalise(owner)
-            # Remove common suffixes that confuse the search
-            name = re.sub(r'\b(EST|ESTATE|TRUST|LLC|INC|CORP|LTD|LP|SR|JR|II|III)\b', '', name).strip()
-            # Take first 2-3 words
+            # Remove entity suffixes
+            name = re.sub(r'\b(EST|ESTATE|TRUST|LLC|INC|CORP|LTD|LP|SR|JR|II|III|PLLC|LLP)\b', '', name).strip()
             parts = name.split()[:3]
             search_name = " ".join(parts)
             if len(search_name) < 3:
                 return {}
 
-            url = f"https://public.hcad.org/records/details.asp?crypt=&acct=&search_val={requests.utils.quote(search_name)}&action=search&srchtype=ownername&taxyear=2026"
-            resp = requests.get(url, timeout=15, headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+            # Use HCAD's real property search API
+            url = "https://public.hcad.org/records/Real.asp"
+            params = {
+                "crypt": "",
+                "acct":  "",
+                "search_val": search_name,
+                "action": "search",
+                "srchtype": "ownername",
+                "taxyear": "2026",
+            }
+            resp = requests.get(url, params=params, timeout=15, headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/122.0",
+                "Referer": "https://public.hcad.org/records/",
             })
             if resp.status_code != 200:
                 return {}
 
             soup = BeautifulSoup(resp.text, "lxml")
-            # Find first result row with address
+            # Look for first row with a street address pattern
             for row in soup.find_all("tr"):
-                cells = [td.get_text(strip=True) for td in row.find_all("td")]
-                if len(cells) >= 3:
-                    # Look for a cell that looks like a street address
-                    for cell in cells:
-                        if re.match(r'\d+\s+[A-Z]', cell.upper()):
-                            return {
-                                "prop_address": cell,
-                                "prop_city":    "Houston",
-                                "prop_state":   "TX",
-                                "prop_zip":     "",
-                                "mail_address": "",
-                                "mail_city":    "",
-                                "mail_state":   "",
-                                "mail_zip":     "",
-                            }
-        except Exception:
-            pass
+                cells = [td.get_text(" ", strip=True) for td in row.find_all("td")]
+                for cell in cells:
+                    # Street address pattern: number + direction/street name
+                    if re.match(r'^\d{1,5}\s+[A-Z]', cell.upper()) and len(cell) > 8:
+                        return {
+                            "prop_address": cell.strip(),
+                            "prop_city":    "Houston",
+                            "prop_state":   "TX",
+                            "prop_zip":     "",
+                            "mail_address": "",
+                            "mail_city":    "",
+                            "mail_state":   "",
+                            "mail_zip":     "",
+                        }
+        except Exception as exc:
+            log.debug("Web lookup failed for '%s': %s", owner, exc)
         return {}
 
 
@@ -708,12 +713,13 @@ class ClerkScraper:
 
                 # Clerk URL — build working direct search link
                 clerk_url = (
-                    f"https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx"
+                    f"https://www.cclerk.hctx.net/applications/websearch/RP.aspx"
                     f"?FileNo={raw['doc_num']}"
                 )
-                # Override with real link if a non-javascript href was found
+                # Override with real link if a non-javascript, non-EComm href found
                 for href in raw["hrefs"]:
-                    if href and "javascript" not in href.lower() and "EComm" not in href and len(href) > 5:
+                    if (href and "javascript" not in href.lower()
+                            and "EComm" not in href and len(href) > 5):
                         clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
                         break
 
@@ -1059,6 +1065,7 @@ async def main():
             if hit:
                 rec.update({k: v for k, v in hit.items() if v})
                 enriched += 1
+                log.debug("  Web lookup hit for '%s': %s", owner[:30], hit.get("prop_address",""))
             web_lookups += 1
     log.info("Parcel enrichment: %d/%d matched (%d web lookups)", enriched, len(records), web_lookups)
 
