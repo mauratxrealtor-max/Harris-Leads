@@ -554,25 +554,28 @@ class ClerkScraper:
         html = await page.content()
         soup = BeautifulSoup(html, "lxml")
 
-        # Find results table — look for "File Number" header
+        # Find results table — confirmed structure: has "File Number" header
+        # and "Grantor:" text in the body
         result_table = None
         for tbl in soup.find_all("table"):
-            hdrs = tbl.get_text(" ", strip=True).lower()
-            if "file number" in hdrs and "file date" in hdrs:
+            tbl_text = tbl.get_text(" ", strip=True)
+            if "File Number" in tbl_text and "File Date" in tbl_text:
                 result_table = tbl
                 break
-        # Fallback: any table with grantor data
         if not result_table:
             for tbl in soup.find_all("table"):
-                if tbl.find(string=re.compile(r"Grantor", re.I)):
+                tbl_text = tbl.get_text(" ", strip=True)
+                if "Grantor:" in tbl_text or "Grantor :" in tbl_text:
                     result_table = tbl
                     break
 
         if not result_table:
-            log.debug("No result table found for %s", doc_code)
+            log.warning("  No result table found for %s (page has %d tables)",
+                       doc_code, len(soup.find_all("table")))
             return records
 
         rows = result_table.find_all("tr")
+        log.info("  Table found for %s: %d rows", doc_code, len(rows))
         if len(rows) < 2:
             return records
 
