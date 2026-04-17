@@ -132,12 +132,10 @@ def _parse_amount(raw: str) -> float | None:
 def _extract_address_from_legal(legal: str) -> str:
     """
     Try to extract a street address from a Harris County legal description.
-    Legal descriptions often start with or contain the situs address.
     Examples: '1234 MAIN ST', '5678 W BELLFORT AVE UNIT 2'
     """
     if not legal:
         return ""
-    # Pattern: number followed by street name (at least 2 words)
     m = re.search(
         r'\b(\d{1,5})\s+([NSEW]\s+)?([A-Z][A-Z0-9\s]{2,30}(?:ST|AVE|BLVD|DR|LN|RD|WAY|CT|PL|TRL|FWY|PKWY|HWY|CIR|LOOP))\b',
         legal.upper()
@@ -145,6 +143,9 @@ def _extract_address_from_legal(legal: str) -> str:
     if m:
         return m.group(0).strip()
     return ""
+
+
+def _deduplicate(records: list[dict]) -> list[dict]:
     seen: set[str] = set()
     out: list[dict] = []
     for rec in records:
