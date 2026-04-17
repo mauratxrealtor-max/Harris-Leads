@@ -408,53 +408,58 @@ class ParcelLookup:
 
     def _web_lookup(self, owner: str) -> dict:
         """
-        Look up address via HCAD public property search API.
+        Look up parcel address via Harris County GIS ArcGIS REST API.
+        Endpoint: https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query
+        Fields confirmed: owner_name_1, site_addr_1, site_city, site_zip,
+                          mail_addr_1, mail_city, mail_state, mail_zip
+        This API is public and requires no authentication.
         """
         try:
             name = self._normalise(owner)
-            # Remove entity suffixes
+            # Strip suffixes
             name = re.sub(r'\b(EST|ESTATE|TRUST|LLC|INC|CORP|LTD|LP|SR|JR|II|III|PLLC|LLP)\b', '', name).strip()
             parts = name.split()[:3]
             search_name = " ".join(parts)
             if len(search_name) < 3:
                 return {}
 
-            # Use HCAD's real property search API
-            url = "https://public.hcad.org/records/Real.asp"
+            # ArcGIS REST API query — LIKE search on owner_name_1
+            url = "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query"
             params = {
-                "crypt": "",
-                "acct":  "",
-                "search_val": search_name,
-                "action": "search",
-                "srchtype": "ownername",
-                "taxyear": "2026",
+                "where":         f"owner_name_1 LIKE '{search_name}%'",
+                "outFields":     "owner_name_1,site_addr_1,site_city,site_zip,mail_addr_1,mail_city,mail_state,mail_zip",
+                "returnGeometry": "false",
+                "f":             "json",
+                "resultRecordCount": 1,
             }
             resp = requests.get(url, params=params, timeout=15, headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/122.0",
-                "Referer": "https://public.hcad.org/records/",
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
             })
             if resp.status_code != 200:
                 return {}
 
-            soup = BeautifulSoup(resp.text, "lxml")
-            # Look for first row with a street address pattern
-            for row in soup.find_all("tr"):
-                cells = [td.get_text(" ", strip=True) for td in row.find_all("td")]
-                for cell in cells:
-                    # Street address pattern: number + direction/street name
-                    if re.match(r'^\d{1,5}\s+[A-Z]', cell.upper()) and len(cell) > 8:
-                        return {
-                            "prop_address": cell.strip(),
-                            "prop_city":    "Houston",
-                            "prop_state":   "TX",
-                            "prop_zip":     "",
-                            "mail_address": "",
-                            "mail_city":    "",
-                            "mail_state":   "",
-                            "mail_zip":     "",
-                        }
+            data = resp.json()
+            features = data.get("features", [])
+            if not features:
+                return {}
+
+            attrs = features[0].get("attributes", {})
+            site_addr = str(attrs.get("site_addr_1") or "").strip()
+            if not site_addr:
+                return {}
+
+            return {
+                "prop_address": site_addr,
+                "prop_city":    str(attrs.get("site_city") or "Houston").strip(),
+                "prop_state":   "TX",
+                "prop_zip":     str(attrs.get("site_zip") or "").strip(),
+                "mail_address": str(attrs.get("mail_addr_1") or "").strip(),
+                "mail_city":    str(attrs.get("mail_city") or "").strip(),
+                "mail_state":   str(attrs.get("mail_state") or "TX").strip(),
+                "mail_zip":     str(attrs.get("mail_zip") or "").strip(),
+            }
         except Exception as exc:
-            log.debug("Web lookup failed for '%s': %s", owner, exc)
+            log.debug("ArcGIS lookup failed for '%s': %s", owner, exc)
         return {}
 
 
@@ -1058,7 +1063,7 @@ async def main():
         if hit:
             rec.update({k: v for k, v in hit.items() if v})
             enriched += 1
-        elif not parcel_db._loaded and web_lookups < 50:
+        elif not parcel_db._loaded and web_lookups < 200:
             # Bulk data unavailable — try web lookup (rate-limited to 50 per run)
             time.sleep(0.5)  # be polite
             hit = parcel_db._web_lookup(owner)
