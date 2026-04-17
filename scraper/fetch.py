@@ -220,34 +220,12 @@ def compute_score(rec: dict) -> tuple[int, list[str]]:
 # ---------------------------------------------------------------------------
 class ParcelLookup:
     """
-    Downloads HCAD Real_acct_owner.zip which contains real_acct.txt —
-    a tab-delimited text file with owner name, site address, mailing address.
-
-    Confirmed file structure from HCAD codebook:
-      real_acct.txt columns (tab-delimited):
-        0  acct         account number
-        1  yr           year
-        2  owner_name   owner name
-        3  owner_name2  (secondary)
-        7  site_addr_1  site street address
-        8  site_city    site city
-        9  state_cd     state
-        10 site_zip     site zip
-        11 mail_addr_1  mailing address line 1
-        12 mail_addr_2  mailing address line 2
-        13 mail_addr_3  mailing address line 3
-        14 mail_city    mailing city
-        15 mail_state   mailing state
-        16 mail_zip     mailing zip
+    Looks up property/mailing addresses from a pre-built HCAD lookup CSV.
+    The CSV is built from Real_acct_owner.zip → real_acct.txt.
+    Columns: owner, site_addr, site_city, site_zip,
+             mail_addr, mail_city, mail_state, mail_zip
+    File location: data/hcad_lookup.csv.gz (committed to repo, ~32MB)
     """
-
-    # Confirmed working URL from HCAD pdata server
-    DOWNLOAD_URLS = [
-        "https://pdata.hcad.org/data/cama/2026/Real_acct_owner.zip",
-        "https://pdata.hcad.org/data/cama/2025/Real_acct_owner.zip",
-        "https://pdata.hcad.org/data/cama/2026/real_acct_owner.zip",
-        "https://pdata.hcad.org/data/cama/2025/real_acct_owner.zip",
-    ]
 
     def __init__(self):
         self._idx: dict[str, dict] = {}
@@ -256,289 +234,77 @@ class ParcelLookup:
     def _normalise(self, name: str) -> str:
         return re.sub(r"\s+", " ", name.upper().strip())
 
-    def _name_variants(self, raw: str) -> list[str]:
-        n = self._normalise(raw)
-        variants = [n]
-        if "," in n:
-            parts = [p.strip() for p in n.split(",", 1)]
-            if len(parts) == 2:
-                variants.append(f"{parts[1]} {parts[0]}")
-        else:
-            tokens = n.split()
-            if len(tokens) >= 2:
-                variants.append(f"{tokens[-1]} {' '.join(tokens[:-1])}")
-                variants.append(f"{tokens[-1]}, {' '.join(tokens[:-1])}")
-        return list(dict.fromkeys(variants))
-
-    def _download_bulk(self) -> Path | None:
-        TMP_DIR.mkdir(parents=True, exist_ok=True)
-        dest = TMP_DIR / "hcad_real_acct.zip"
-        if dest.exists() and dest.stat().st_size > 100_000:
-            log.info("Using cached HCAD zip: %s (%d bytes)", dest, dest.stat().st_size)
-            return dest
-
-        for url in self.DOWNLOAD_URLS:
-            try:
-                log.info("Trying HCAD download: %s", url)
-                r = requests.get(url, timeout=180, stream=True)
-                if r.status_code == 200:
-                    size = 0
-                    with open(dest, "wb") as fh:
-                        for chunk in r.iter_content(65536):
-                            fh.write(chunk)
-                            size += len(chunk)
-                    if size > 100_000:
-                        log.info("Downloaded HCAD -> %s (%d bytes)", dest, size)
-                        return dest
-                    else:
-                        log.warning("Downloaded file too small (%d bytes), skipping", size)
-                        dest.unlink(missing_ok=True)
-                else:
-                    log.warning("HTTP %d for %s", r.status_code, url)
-            except Exception as exc:
-                log.warning("HCAD download failed (%s): %s", url, exc)
-
-        log.error("All HCAD download URLs failed — address enrichment disabled.")
-        return None
-
-    def _load_txt(self, zip_path: Path):
-        """Parse real_acct.txt (tab-delimited) from the zip file."""
-        extract_dir = TMP_DIR / "hcad_extracted"
-        extract_dir.mkdir(parents=True, exist_ok=True)
-
-        try:
-            with zipfile.ZipFile(zip_path, "r") as zf:
-                members = zf.namelist()
-                log.info("HCAD zip contents: %s", members)
-                txt_members = [m for m in members if m.lower().endswith(".txt")]
-                if not txt_members:
-                    log.error("No .txt files in HCAD zip: %s", members)
-                    return
-                zf.extractall(extract_dir)
-        except Exception as exc:
-            log.error("Failed to extract HCAD zip: %s", exc)
-            return
-
-        # Find real_acct.txt
-        chosen = None
-        for name in ["real_acct.txt", "Real_acct.txt", "REAL_ACCT.TXT"]:
-            c = extract_dir / name
-            if c.exists():
-                chosen = c
-                break
-        if chosen is None:
-            # Just take the first .txt
-            chosen = extract_dir / txt_members[0]
-
-        log.info("Loading HCAD parcel txt: %s (%d bytes)", chosen, chosen.stat().st_size)
-        count = 0
-        errors = 0
-
-        try:
-            with open(chosen, "r", encoding="latin-1", errors="replace") as fh:
-                for line in fh:
-                    try:
-                        cols = line.rstrip("\n").split("\t")
-                        if len(cols) < 10:
-                            continue
-
-                        owner_raw = str(cols[2]).strip() if len(cols) > 2 else ""
-                        if not owner_raw or owner_raw.lower() in ("owner_name", "owner"):
-                            continue  # skip header row
-
-                        # Site address
-                        site_addr = str(cols[7]).strip()  if len(cols) > 7  else ""
-                        site_city = str(cols[8]).strip()  if len(cols) > 8  else "Houston"
-                        site_zip  = str(cols[10]).strip() if len(cols) > 10 else ""
-
-                        # Mailing address
-                        mail_addr = str(cols[11]).strip() if len(cols) > 11 else ""
-                        mail_city = str(cols[14]).strip() if len(cols) > 14 else ""
-                        mail_state= str(cols[15]).strip() if len(cols) > 15 else "TX"
-                        mail_zip  = str(cols[16]).strip() if len(cols) > 16 else ""
-
-                        parcel = {
-                            "prop_address": site_addr,
-                            "prop_city":    site_city or "Houston",
-                            "prop_state":   "TX",
-                            "prop_zip":     site_zip,
-                            "mail_address": mail_addr,
-                            "mail_city":    mail_city,
-                            "mail_state":   mail_state or "TX",
-                            "mail_zip":     mail_zip,
-                        }
-
-                        for variant in self._name_variants(owner_raw):
-                            if variant not in self._idx:
-                                self._idx[variant] = parcel
-                        count += 1
-
-                    except Exception:
-                        errors += 1
-                        continue
-
-        except Exception as exc:
-            log.error("Failed to read HCAD txt: %s", exc)
-            return
-
-        log.info("Parcel index built: %d records, %d variants, %d errors",
-                 count, len(self._idx), errors)
-        if count > 0:
-            self._loaded = True
-
     def load(self):
-        """Try bulk download first, fall back to web lookup mode."""
-        zip_path = self._download_bulk()
-        if zip_path:
-            self._load_txt(zip_path)
-        # Even if bulk fails, web lookup is available per-record
+        """Load the pre-built HCAD lookup CSV from the data/ directory."""
+        candidates = [
+            ROOT / "data" / "hcad_lookup.csv.gz",
+            ROOT / "scraper" / "hcad_lookup.csv.gz",
+            TMP_DIR / "hcad_lookup.csv.gz",
+        ]
+        csv_path = None
+        for c in candidates:
+            if c.exists() and c.stat().st_size > 1000:
+                csv_path = c
+                break
+
+        if not csv_path:
+            log.warning("hcad_lookup.csv.gz not found — address enrichment disabled.")
+            return
+
+        log.info("Loading HCAD lookup: %s (%d bytes)", csv_path, csv_path.stat().st_size)
+        count = 0
+        try:
+            import gzip as gz
+            opener = gz.open if str(csv_path).endswith(".gz") else open
+            with opener(csv_path, "rt", encoding="utf-8", errors="replace") as fh:
+                reader = csv.DictReader(fh)
+                for row in reader:
+                    owner = (row.get("owner") or "").strip().upper()
+                    if not owner:
+                        continue
+                    parcel = {
+                        "prop_address": (row.get("site_addr") or "").strip(),
+                        "prop_city":    (row.get("site_city") or "Houston").strip(),
+                        "prop_state":   "TX",
+                        "prop_zip":     (row.get("site_zip") or "").strip(),
+                        "mail_address": (row.get("mail_addr") or "").strip(),
+                        "mail_city":    (row.get("mail_city") or "").strip(),
+                        "mail_state":   (row.get("mail_state") or "TX").strip(),
+                        "mail_zip":     (row.get("mail_zip") or "").strip(),
+                    }
+                    if parcel["prop_address"]:
+                        self._idx[owner] = parcel
+                        count += 1
+        except Exception as exc:
+            log.error("Failed to load HCAD lookup CSV: %s", exc)
+            return
+
+        log.info("HCAD lookup loaded: %d records", count)
+        self._loaded = True
 
     def lookup(self, owner: str) -> dict:
-        """Look up parcel data by owner name."""
-        if not owner:
+        if not self._loaded or not owner:
             return {}
-        # Try bulk index first
-        if self._loaded:
-            for variant in self._name_variants(owner):
-                hit = self._idx.get(variant)
-                if hit:
-                    return hit
-        # Fall back to ArcGIS web lookup
-        time.sleep(0.3)  # rate limit
-        result = self._web_lookup(owner)
-        if result:
-            log.info("  ArcGIS hit: '%s' -> %s", owner[:40], result.get("prop_address",""))
-        return result
 
-    def _web_lookup(self, owner: str) -> dict:
-        """
-        Look up address via Harris County Tax Office property search.
-        Uses hctax.net which has a simpler, less restricted search.
-        """
-        try:
-            name = self._normalise(owner)
-            name = re.sub(r'\b(EST|ESTATE|TRUST|LLC|INC|CORP|LTD|LP|SR|JR|II|III|PLLC|LLP)\b', '', name).strip()
-            parts = name.split()[:2]  # Use first 2 words for better matching
-            search_name = " ".join(parts)
-            if len(search_name) < 3:
-                return {}
+        n = self._normalise(owner)
 
-            # Harris County Tax Office — owner name search
-            url = "https://www.hctax.net/property/search"
-            params = {"searchTerm": search_name, "searchType": "owner"}
-            resp = requests.get(url, params=params, timeout=15, headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/122.0",
-                "Accept": "application/json, text/plain, */*",
-                "Referer": "https://www.hctax.net/",
-            })
-            if resp.status_code != 200:
-                return {}
+        # 1. Exact match
+        if n in self._idx:
+            return self._idx[n]
 
-            # Try JSON response first
-            try:
-                data = resp.json()
-                results = data if isinstance(data, list) else data.get("results", data.get("data", []))
-                if results:
-                    r = results[0] if isinstance(results, list) else results
-                    addr = (r.get("siteAddress") or r.get("address") or
-                            r.get("SiteAddress") or r.get("propertyAddress") or "")
-                    city = (r.get("siteCity") or r.get("city") or "Houston")
-                    if addr and re.match(r'\d+', addr):
-                        return {
-                            "prop_address": addr.strip(),
-                            "prop_city":    city or "Houston",
-                            "prop_state":   "TX",
-                            "prop_zip":     str(r.get("siteZip") or r.get("zip") or "").strip(),
-                            "mail_address": str(r.get("mailAddress") or "").strip(),
-                            "mail_city":    str(r.get("mailCity") or "").strip(),
-                            "mail_state":   str(r.get("mailState") or "TX").strip(),
-                            "mail_zip":     str(r.get("mailZip") or "").strip(),
-                        }
-            except Exception:
-                pass
+        # 2. Strip EST/ESTATE suffix and try again
+        n_clean = re.sub(r"\b(EST|ESTATE)\b.*", "", n).strip()
+        if n_clean != n and n_clean in self._idx:
+            return self._idx[n_clean]
 
-            # Try HTML parsing
-            soup = BeautifulSoup(resp.text, "lxml")
-            for row in soup.find_all("tr"):
-                cells = [td.get_text(" ", strip=True) for td in row.find_all("td")]
-                for cell in cells:
-                    if re.match(r'^\d{2,5}\s+[A-Z]', cell.upper()) and len(cell) > 8:
-                        return {
-                            "prop_address": cell.strip(),
-                            "prop_city":    "Houston",
-                            "prop_state":   "TX",
-                            "prop_zip":     "",
-                            "mail_address": "", "mail_city": "",
-                            "mail_state": "TX", "mail_zip": "",
-                        }
-        except Exception as exc:
-            log.debug("Tax office lookup failed for '%s': %s", owner, exc)
-        return {}
+        # 3. Prefix match on first 2 words
+        parts = n_clean.split()
+        if len(parts) >= 2:
+            prefix = " ".join(parts[:2])
+            for key, val in self._idx.items():
+                if key.startswith(prefix):
+                    return val
 
-    def _lookup_by_legal(self, legal: str) -> dict:
-        """
-        Extract subdivision/lot/block from legal description and
-        query HCAD ArcGIS for matching parcels.
-        """
-        if not legal:
-            return {}
-        try:
-            # Extract subdivision name
-            subdiv_m = re.search(r'Desc:\s*([A-Z][A-Z0-9\s]{3,40}?)(?=\s*(?:Lot:|Block:|Sec:|$))', legal)
-            lot_m    = re.search(r'Lot:\s*([\w\-]+)', legal)
-            block_m  = re.search(r'Block:\s*([\w\-]+)', legal)
-
-            if not subdiv_m:
-                return {}
-
-            subdiv = subdiv_m.group(1).strip()
-            lot    = lot_m.group(1).strip() if lot_m else ""
-            block  = block_m.group(1).strip() if block_m else ""
-
-            # Build WHERE clause for ArcGIS
-            where_parts = [f"subdiv_nm LIKE '{subdiv}%'"]
-            if lot:
-                where_parts.append(f"LOT_NUM = '{lot}'")
-            if block:
-                where_parts.append(f"BLK_NUM = '{block}'")
-            where = " AND ".join(where_parts)
-
-            url = "https://www.gis.hctx.net/arcgis/rest/services/HCAD/Parcels/MapServer/0/query"
-            params = {
-                "where":              where,
-                "outFields":          "owner_name_1,site_addr_1,site_city,site_zip,mail_addr_1,mail_city,mail_state,mail_zip",
-                "returnGeometry":     "false",
-                "f":                  "json",
-                "resultRecordCount":  1,
-            }
-            resp = requests.get(url, params=params, timeout=15, headers={
-                "User-Agent": "Mozilla/5.0"
-            })
-            if resp.status_code != 200:
-                return {}
-
-            data = resp.json()
-            features = data.get("features", [])
-            if not features:
-                return {}
-
-            attrs = features[0].get("attributes", {})
-            site_addr = str(attrs.get("site_addr_1") or "").strip()
-            if not site_addr:
-                return {}
-
-            return {
-                "prop_address": site_addr,
-                "prop_city":    str(attrs.get("site_city") or "Houston").strip(),
-                "prop_state":   "TX",
-                "prop_zip":     str(attrs.get("site_zip") or "").strip(),
-                "mail_address": str(attrs.get("mail_addr_1") or "").strip(),
-                "mail_city":    str(attrs.get("mail_city") or "").strip(),
-                "mail_state":   str(attrs.get("mail_state") or "TX").strip(),
-                "mail_zip":     str(attrs.get("mail_zip") or "").strip(),
-            }
-        except Exception as exc:
-            log.debug("Legal lookup failed: %s", exc)
         return {}
 
 
@@ -1139,19 +905,11 @@ async def main():
         if not owner:
             continue
         hit = parcel_db.lookup(owner)
-        # If no hit by owner name, try by legal description
-        if not hit or not hit.get("prop_address"):
-            legal = rec.get("legal", "")
-            if legal:
-                hit2 = parcel_db._lookup_by_legal(legal)
-                if hit2 and hit2.get("prop_address"):
-                    hit = hit2
         if hit and hit.get("prop_address"):
             rec.update({k: v for k, v in hit.items() if v})
             enriched += 1
-            log.info("  Address: '%s' -> %s", owner[:30], hit["prop_address"])
         web_lookups += 1
-    log.info("Parcel enrichment: %d/%d matched (%d lookups)", enriched, len(records), web_lookups)
+    log.info("Parcel enrichment: %d/%d matched", enriched, len(records))
 
     # 4. Score
     for rec in records:
