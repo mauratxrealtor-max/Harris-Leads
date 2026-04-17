@@ -584,98 +584,90 @@ class ClerkScraper:
             first_cells = rows[1].find_all(["td", "th"])
             log.info("  First row has %d cells: %s",
                      len(first_cells),
-                     " | ".join(c.get_text(" ", strip=True)[:30] for c in first_cells[:8]))
+                     " | ".join(c.get_text(" ", strip=True)[:25] for c in first_cells[:8]))
+
+        # The portal renders each record across MULTIPLE <tr> rows.
+        # The first row of each record has the doc number (RP-YYYY-NNNNNN).
+        # Subsequent rows add more grantor/grantee names.
+        # Strategy: group consecutive rows by doc number.
+        current: dict | None = None
+        grouped: list[dict] = []
 
         for row in rows[1:]:
             cells = row.find_all(["td", "th"])
-            if not cells or len(cells) < 4:
+            if not cells:
                 continue
+            row_text = " ".join(c.get_text(" ", strip=True) for c in cells)
+            doc_match  = re.search(r'\b([A-Z]{1,4}-\d{4}-\d{4,8})\b', row_text)
+            date_match = re.search(r'\b(\d{2}/\d{2}/\d{4})\b', row_text)
+
+            if doc_match and date_match:
+                if current:
+                    grouped.append(current)
+                current = {
+                    "doc_num": doc_match.group(1),
+                    "filed":   _parse_date(date_match.group(1)),
+                    "text":    row_text,
+                    "hrefs":   [a.get("href","") for a in row.find_all("a", href=True)],
+                }
+            elif current:
+                current["text"]  += " " + row_text
+                current["hrefs"] += [a.get("href","") for a in row.find_all("a", href=True)]
+
+        if current:
+            grouped.append(current)
+
+        log.info("  Grouped into %d records for %s", len(grouped), doc_code)
+
+        for raw in grouped:
             try:
-                def ct(idx: int) -> str:
-                    return cells[idx].get_text(" ", strip=True) if idx < len(cells) else ""
+                full = raw["text"]
 
-                # Find doc_num — look for RP-YYYY-NNNNNN pattern in first few cells
-                doc_num = ""
-                for i in range(min(4, len(cells))):
-                    val = ct(i).strip()
-                    if re.match(r'^[A-Z]{1,4}-\d{4}-\d+$', val):
-                        doc_num = val
-                        break
-                if not doc_num:
-                    # Fallback: col 1 if it looks like a doc number
-                    val = ct(1).strip()
-                    if val and val.lower() not in ("file number", "") and len(val) > 3:
-                        doc_num = val
-                if not doc_num or len(doc_num) < 3:
-                    continue
-
-                # File Date: col 2
-                filed = _parse_date(ct(2).strip())
-
-                # Scan ALL cells for Grantor/Grantee text
-                grantors, grantees = [], []
-                full_text = " ".join(ct(i) for i in range(len(cells)))
-
-                # Extract all Grantor names (stop at next Grantor/Grantee label)
+                # Extract Grantor names
+                grantors = []
                 for m in re.finditer(
-                    r'Grantor\s*:\s*([\w][\w\s,\.]{1,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|$))',
-                    full_text
+                    r'Grantor\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*\|\s*\w|\s*$))',
+                    full
                 ):
-                    name = m.group(1).strip().rstrip("|").strip()
-                    if name and name not in grantors:
+                    name = m.group(1).strip().strip("|").strip()
+                    if name and len(name) > 1 and name not in grantors:
                         grantors.append(name)
 
-                # Extract all Grantee names
+                # Extract Grantee names
+                grantees = []
                 for m in re.finditer(
-                    r'Grantee\s*:\s*([\w][\w\s,\.]{1,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|$))',
-                    full_text
+                    r'Grantee\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*\|\s*\w|\s*$))',
+                    full
                 ):
-                    name = m.group(1).strip().rstrip("|").strip()
-                    if name and name not in grantees:
+                    name = m.group(1).strip().strip("|").strip()
+                    if name and len(name) > 1 and name not in grantees:
                         grantees.append(name)
 
-                grantor = "; ".join(grantors) if grantors else ct(4)[:100]
+                grantor = "; ".join(grantors)
                 grantee = "; ".join(grantees)
 
-                # Legal description: scan all cells
+                # Legal description
                 legal_text = ""
-                for i in range(len(cells)):
-                    txt = ct(i)
-                    if any(k in txt for k in ("Desc:", "Lot:", "Block:", "Comment:", "Abstract:", "Sec:")):
-                        legal_text = txt
+                for key in ("Desc:", "Comment:", "Lot:", "Block:", "Abstract:", "Sec:"):
+                    m = re.search(key + r'\s*(.{3,80}?)(?=\s*(?:Desc:|Comment:|Lot:|Block:|$))', full)
+                    if m:
+                        legal_text = key + " " + m.group(1).strip()
                         break
 
-                # Clerk URL: look for Film Code link (last column with RP- link)
-                clerk_url = ""
-                # First try: find <a> whose text looks like a doc number
-                for a in row.find_all("a", href=True):
-                    href = a.get("href", "")
-                    text = a.get_text(strip=True)
-                    if re.match(r'^[A-Z]+-\d{4}-\d+$', text):
-                        if href.startswith("http"):
-                            clerk_url = href
-                        elif href.startswith("/"):
-                            clerk_url = CLERK_BASE + href
-                        elif "javascript" not in href.lower():
-                            clerk_url = CLERK_BASE + "/" + href.lstrip("/")
-                        # Build URL from doc number if href is javascript
-                        if not clerk_url or "javascript" in clerk_url.lower():
-                            clerk_url = f"https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?SID={text}"
+                # Clerk URL — build from doc number (portal links are JS postbacks)
+                clerk_url = f"https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?SID={raw['doc_num']}"
+                # Override with real link if found
+                for href in raw["hrefs"]:
+                    if href and "javascript" not in href.lower() and len(href) > 5:
+                        clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
                         break
-                # Fallback: any non-javascript link in row
-                if not clerk_url:
-                    for a in row.find_all("a", href=True):
-                        href = a.get("href", "")
-                        if "javascript" not in href.lower():
-                            clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
-                            break
 
                 prop_addr = _extract_address_from_legal(legal_text)
 
                 records.append({
-                    "doc_num":      doc_num,
+                    "doc_num":      raw["doc_num"],
                     "doc_type":     doc_code,
-                    "filed":        filed,
+                    "filed":        raw["filed"],
                     "cat":          cat,
                     "cat_label":    cat_label,
                     "owner":        grantor,
@@ -695,7 +687,7 @@ class ClerkScraper:
                     "score":        0,
                 })
             except Exception as exc:
-                log.debug("Row parse error (%s): %s", doc_code, exc)
+                log.debug("Record build error (%s): %s", doc_code, exc)
                 continue
 
         return records
