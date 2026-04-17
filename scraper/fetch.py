@@ -129,7 +129,22 @@ def _parse_amount(raw: str) -> float | None:
         return None
 
 
-def _deduplicate(records: list[dict]) -> list[dict]:
+def _extract_address_from_legal(legal: str) -> str:
+    """
+    Try to extract a street address from a Harris County legal description.
+    Legal descriptions often start with or contain the situs address.
+    Examples: '1234 MAIN ST', '5678 W BELLFORT AVE UNIT 2'
+    """
+    if not legal:
+        return ""
+    # Pattern: number followed by street name (at least 2 words)
+    m = re.search(
+        r'\b(\d{1,5})\s+([NSEW]\s+)?([A-Z][A-Z0-9\s]{2,30}(?:ST|AVE|BLVD|DR|LN|RD|WAY|CT|PL|TRL|FWY|PKWY|HWY|CIR|LOOP))\b',
+        legal.upper()
+    )
+    if m:
+        return m.group(0).strip()
+    return ""
     seen: set[str] = set()
     out: list[dict] = []
     for rec in records:
@@ -470,32 +485,37 @@ class ClerkScraper:
         portal_from = self._to_portal_date(self.date_from)
         portal_to   = self._to_portal_date(self.date_to)
 
-        # Wait for the form to be fully rendered (txtFrom is a known field)
+        # Wait for form — use different known field per page type
+        known_field = (
+            '#ctl00_ContentPlaceHolder1_txtFrom'
+            if url == CLERK_RP_URL
+            else '#ctl00_ContentPlaceHolder1_txtBegDate, #ctl00_ContentPlaceHolder1_txtFrom'
+        )
         try:
-            await page.wait_for_selector(
-                '#ctl00_ContentPlaceHolder1_txtFrom',
-                state="visible", timeout=15_000
-            )
+            await page.wait_for_selector(known_field, state="attached", timeout=15_000)
         except Exception:
             log.warning("  Form not ready after 15s — proceeding anyway")
 
-        # Dump all inputs on first call so we can read real IDs from the log
-        if doc_code == TARGET_CODES[0]:
+        # Dump all inputs on first call for each page type
+        if doc_code == TARGET_CODES[0] or (doc_code in FRCL_TYPES and doc_code == list(FRCL_TYPES)[0]):
             await self._dump_inputs(page)
 
-        # Date From — CONFIRMED ID: ctl00_ContentPlaceHolder1_txtFrom
+        # Date From — RP page: txtFrom / FRCL page: may use txtBegDate or txtFrom
         await self._set_field(page, [
-            "txtFrom", "DateFrom", "dateFrom", "tbDateFrom", "BeginDate",
+            "txtFrom", "txtBegDate", "txtStartDate", "DateFrom",
+            "dateFrom", "tbDateFrom", "BeginDate",
         ], portal_from, "DateFrom")
 
-        # Date To — CONFIRMED ID: ctl00_ContentPlaceHolder1_txtTo
+        # Date To — RP page: txtTo / FRCL page: may use txtEndDate or txtTo
         await self._set_field(page, [
-            "txtTo", "DateTo", "dateTo", "tbDateTo", "EndDate",
+            "txtTo", "txtEndDate", "txtStopDate", "DateTo",
+            "dateTo", "tbDateTo", "EndDate",
         ], portal_to, "DateTo")
 
-        # Instrument Type — CONFIRMED ID: ctl00_ContentPlaceHolder1_txtInstrument
+        # Instrument Type — RP page: txtInstrument
         await self._set_field(page, [
-            "txtInstrument", "Instrument", "InstrType", "InstrumentType", "DocType",
+            "txtInstrument", "txtDocType", "Instrument",
+            "InstrType", "InstrumentType", "DocType",
         ], doc_code, "InstrType")
 
         # Search button — confirmed id from run #4 log
@@ -575,6 +595,9 @@ class ClerkScraper:
                 if not doc_num and link_tag:
                     doc_num = link_tag.get_text(" ", strip=True)
 
+                legal_text = cell_text(idx_legal).strip()
+                prop_addr  = _extract_address_from_legal(legal_text)
+
                 records.append({
                     "doc_num":      doc_num.strip(),
                     "doc_type":     doc_code,
@@ -584,8 +607,8 @@ class ClerkScraper:
                     "owner":        cell_text(idx_grantor).strip(),
                     "grantee":      cell_text(idx_grantee).strip(),
                     "amount":       _parse_amount(cell_text(idx_amount)),
-                    "legal":        cell_text(idx_legal).strip(),
-                    "prop_address": "",
+                    "legal":        legal_text,
+                    "prop_address": prop_addr,
                     "prop_city":    "Houston",
                     "prop_state":   "TX",
                     "prop_zip":     "",
