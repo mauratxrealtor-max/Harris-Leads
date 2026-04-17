@@ -380,29 +380,42 @@ class ClerkScraper:
         log.info("  === END INPUTS ===")
 
     async def _set_field(self, page, fragments: list[str], value: str, field_name: str) -> bool:
-        """Find input by id/name fragment, wait for it to be visible, then fill."""
+        """
+        Fill a form field by injecting value directly via JavaScript.
+        This bypasses Playwright visibility checks which fail on ASP.NET portals
+        where fields exist in DOM but may not be 'visible' per Playwright's rules.
+        """
         for frag in fragments:
-            for attr in ["id", "name"]:
-                sel = f'input[{attr}*="{frag}"]:not([type="hidden"]), select[{attr}*="{frag}"]'
-                try:
-                    el = page.locator(sel).first
-                    await el.wait_for(state="visible", timeout=5_000)
-                    actual = await el.get_attribute(attr) or frag
-                    tag = await el.evaluate("el => el.tagName.toLowerCase()")
-                    if tag == "select":
-                        await el.select_option(value=value)
-                    else:
-                        await el.click()
-                        await el.triple_click()
-                        await el.fill(value)
-                        filled = await el.input_value()
-                        if not filled:
-                            await el.type(value, delay=30)
-                    log.info("  %s filled '%s' (matched %s='%s')", field_name, value, attr, actual)
+            js = f"""
+            () => {{
+                // Search all inputs/selects whose id or name contains the fragment
+                const els = Array.from(document.querySelectorAll(
+                    'input[id*="{frag}"], input[name*="{frag}"], select[id*="{frag}"], select[name*="{frag}"]'
+                )).filter(el => el.type !== 'hidden');
+                if (!els.length) return null;
+                const el = els[0];
+                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value'
+                )?.set;
+                if (nativeInputValueSetter) {{
+                    nativeInputValueSetter.call(el, '{value}');
+                }} else {{
+                    el.value = '{value}';
+                }}
+                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                return el.id || el.name;
+            }}
+            """
+            try:
+                result = await page.evaluate(js)
+                if result:
+                    log.info("  %s filled '%s' via JS (element: %s)", field_name, value, result)
                     return True
-                except Exception:
-                    continue
-        log.warning("  Could not fill %s — no fragment matched %s", field_name, fragments)
+            except Exception as exc:
+                log.debug("  JS fill fragment '%s' failed: %s", frag, exc)
+                continue
+        log.warning("  Could not fill %s — tried fragments: %s", field_name, fragments)
         return False
 
     async def _fill_rp_form(self, page, doc_code: str):
