@@ -579,6 +579,13 @@ class ClerkScraper:
         if len(rows) < 2:
             return records
 
+        # Log first data row for debugging
+        if len(rows) > 1:
+            first_cells = rows[1].find_all(["td", "th"])
+            log.info("  First row has %d cells: %s",
+                     len(first_cells),
+                     " | ".join(c.get_text(" ", strip=True)[:30] for c in first_cells[:5]))
+
         for row in rows[1:]:
             cells = row.find_all(["td", "th"])
             if not cells or len(cells) < 3:
@@ -589,63 +596,55 @@ class ClerkScraper:
 
                 # Col 0: File Number
                 doc_num = ct(0).strip()
+                # Skip header rows and empty rows
+                if not doc_num or doc_num.lower() in ("file number", ""):
+                    continue
+                # Skip rows that don't look like doc numbers (RP-YYYY-NNNNNN pattern)
+                # but still accept any non-empty value
 
                 # Col 1: File Date
                 filed = _parse_date(ct(1).strip())
 
-                # Col 3: Names — parse Grantor/Grantee from structured text
-                names_cell = cells[3] if len(cells) > 3 else None
-                grantor, grantee = "", ""
-                if names_cell:
-                    # Find all label:value pairs
-                    names_html = names_cell.get_text("\n", strip=True)
-                    grantors, grantees = [], []
-                    for line in names_html.split("\n"):
-                        line = line.strip()
-                        if line.lower().startswith("grantor:"):
-                            grantors.append(line[8:].strip())
-                        elif line.lower().startswith("grantee:"):
-                            grantees.append(line[8:].strip())
-                    grantor = "; ".join(grantors)
-                    grantee = "; ".join(grantees)
+                # Col 3: Names — parse Grantor/Grantee
+                names_text = ct(3) if len(cells) > 3 else ""
+                grantors, grantees = [], []
+                for line in names_text.replace("Grantor:", "\nGrantor:").replace("Grantee:", "\nGrantee:").split("\n"):
+                    line = line.strip()
+                    if line.lower().startswith("grantor:"):
+                        val = line[8:].strip()
+                        if val:
+                            grantors.append(val)
+                    elif line.lower().startswith("grantee:"):
+                        val = line[8:].strip()
+                        if val:
+                            grantees.append(val)
+                grantor = "; ".join(grantors) if grantors else names_text[:100]
+                grantee = "; ".join(grantees)
 
                 # Col 4: Legal Description
-                legal_cell = cells[4] if len(cells) > 4 else None
-                legal_text = ""
-                if legal_cell:
-                    legal_text = legal_cell.get_text(" ", strip=True)
+                legal_text = ct(4).strip() if len(cells) > 4 else ""
 
-                # Col 6: Film Code — has the real document link
+                # Col 6: Film Code link
                 clerk_url = ""
-                link_cell = cells[6] if len(cells) > 6 else None
-                if link_cell:
-                    a = link_cell.find("a", href=True)
+                if len(cells) > 6:
+                    a = cells[6].find("a", href=True)
                     if a:
                         href = a.get("href", "")
                         if href.startswith("http"):
                             clerk_url = href
                         elif href.startswith("/"):
                             clerk_url = CLERK_BASE + href
-                        else:
-                            # Build URL from film code text
-                            film_code = a.get_text(strip=True)
-                            if film_code:
-                                clerk_url = f"https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?ID={film_code}"
-
-                # Fallback doc_num from film code link text
-                if not doc_num and link_cell:
-                    a = link_cell.find("a")
+                # Fallback: any link in the row
+                if not clerk_url:
+                    a = row.find("a", href=True)
                     if a:
-                        doc_num = a.get_text(strip=True)
+                        href = a.get("href", "")
+                        if href.startswith("http"):
+                            clerk_url = href
+                        elif href.startswith("/"):
+                            clerk_url = CLERK_BASE + href
 
-                # Amount — not in this table, will be empty
-                amount = None
-
-                legal_text = legal_text.strip()
                 prop_addr = _extract_address_from_legal(legal_text)
-
-                if not doc_num:
-                    continue
 
                 records.append({
                     "doc_num":      doc_num,
@@ -655,7 +654,7 @@ class ClerkScraper:
                     "cat_label":    cat_label,
                     "owner":        grantor,
                     "grantee":      grantee,
-                    "amount":       amount,
+                    "amount":       None,
                     "legal":        legal_text,
                     "prop_address": prop_addr,
                     "prop_city":    "Houston",
