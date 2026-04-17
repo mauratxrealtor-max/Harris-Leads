@@ -57,7 +57,7 @@ log = logging.getLogger("harris_scraper")
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-LOOKBACK_DAYS: int = int(os.getenv("LOOKBACK_DAYS", "7"))
+LOOKBACK_DAYS: int = int(os.getenv("LOOKBACK_DAYS", "14"))
 
 # Confirmed live URLs
 CLERK_BASE      = "https://www.cclerk.hctx.net"
@@ -387,17 +387,69 @@ class ParcelLookup:
             self._loaded = True
 
     def load(self):
+        """Try bulk download first, fall back to web lookup mode."""
         zip_path = self._download_bulk()
         if zip_path:
             self._load_txt(zip_path)
+        # Even if bulk fails, web lookup is available per-record
 
     def lookup(self, owner: str) -> dict:
-        if not self._loaded or not owner:
+        """Look up parcel data by owner name."""
+        if not owner:
             return {}
-        for variant in self._name_variants(owner):
-            hit = self._idx.get(variant)
-            if hit:
-                return hit
+        # Try bulk index first
+        if self._loaded:
+            for variant in self._name_variants(owner):
+                hit = self._idx.get(variant)
+                if hit:
+                    return hit
+        # Fall back to HCAD web search
+        return self._web_lookup(owner)
+
+    def _web_lookup(self, owner: str) -> dict:
+        """
+        Look up address via HCAD public property search.
+        Uses the owner name search at hcad.org/quicksearch.
+        Rate-limited to avoid overloading — only called when bulk index unavailable.
+        """
+        try:
+            # Normalise name for HCAD search (Last First format, no punctuation)
+            name = self._normalise(owner)
+            # Remove common suffixes that confuse the search
+            name = re.sub(r'\b(EST|ESTATE|TRUST|LLC|INC|CORP|LTD|LP|SR|JR|II|III)\b', '', name).strip()
+            # Take first 2-3 words
+            parts = name.split()[:3]
+            search_name = " ".join(parts)
+            if len(search_name) < 3:
+                return {}
+
+            url = f"https://public.hcad.org/records/details.asp?crypt=&acct=&search_val={requests.utils.quote(search_name)}&action=search&srchtype=ownername&taxyear=2026"
+            resp = requests.get(url, timeout=15, headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+            })
+            if resp.status_code != 200:
+                return {}
+
+            soup = BeautifulSoup(resp.text, "lxml")
+            # Find first result row with address
+            for row in soup.find_all("tr"):
+                cells = [td.get_text(strip=True) for td in row.find_all("td")]
+                if len(cells) >= 3:
+                    # Look for a cell that looks like a street address
+                    for cell in cells:
+                        if re.match(r'\d+\s+[A-Z]', cell.upper()):
+                            return {
+                                "prop_address": cell,
+                                "prop_city":    "Houston",
+                                "prop_state":   "TX",
+                                "prop_zip":     "",
+                                "mail_address": "",
+                                "mail_city":    "",
+                                "mail_state":   "",
+                                "mail_zip":     "",
+                            }
+        except Exception:
+            pass
         return {}
 
 
@@ -988,12 +1040,24 @@ async def main():
     parcel_db = ParcelLookup()
     parcel_db.load()
     enriched = 0
+    web_lookups = 0
     for rec in records:
-        hit = parcel_db.lookup(rec.get("owner", ""))
+        owner = rec.get("owner", "")
+        if not owner:
+            continue
+        hit = parcel_db.lookup(owner)
         if hit:
             rec.update({k: v for k, v in hit.items() if v})
             enriched += 1
-    log.info("Parcel enrichment: %d/%d matched", enriched, len(records))
+        elif not parcel_db._loaded and web_lookups < 50:
+            # Bulk data unavailable — try web lookup (rate-limited to 50 per run)
+            time.sleep(0.5)  # be polite
+            hit = parcel_db._web_lookup(owner)
+            if hit:
+                rec.update({k: v for k, v in hit.items() if v})
+                enriched += 1
+            web_lookups += 1
+    log.info("Parcel enrichment: %d/%d matched (%d web lookups)", enriched, len(records), web_lookups)
 
     # 4. Score
     for rec in records:
