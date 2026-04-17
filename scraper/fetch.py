@@ -203,6 +203,36 @@ def compute_score(rec: dict) -> tuple[int, list[str]]:
 # HCAD Parcel Lookup
 # ---------------------------------------------------------------------------
 class ParcelLookup:
+    """
+    Downloads HCAD Real_acct_owner.zip which contains real_acct.txt —
+    a tab-delimited text file with owner name, site address, mailing address.
+
+    Confirmed file structure from HCAD codebook:
+      real_acct.txt columns (tab-delimited):
+        0  acct         account number
+        1  yr           year
+        2  owner_name   owner name
+        3  owner_name2  (secondary)
+        7  site_addr_1  site street address
+        8  site_city    site city
+        9  state_cd     state
+        10 site_zip     site zip
+        11 mail_addr_1  mailing address line 1
+        12 mail_addr_2  mailing address line 2
+        13 mail_addr_3  mailing address line 3
+        14 mail_city    mailing city
+        15 mail_state   mailing state
+        16 mail_zip     mailing zip
+    """
+
+    # Confirmed working URL from HCAD pdata server
+    DOWNLOAD_URLS = [
+        "https://pdata.hcad.org/data/cama/2026/Real_acct_owner.zip",
+        "https://pdata.hcad.org/data/cama/2025/Real_acct_owner.zip",
+        "https://pdata.hcad.org/data/cama/2026/real_acct_owner.zip",
+        "https://pdata.hcad.org/data/cama/2025/real_acct_owner.zip",
+    ]
+
     def __init__(self):
         self._idx: dict[str, dict] = {}
         self._loaded = False
@@ -226,107 +256,124 @@ class ParcelLookup:
 
     def _download_bulk(self) -> Path | None:
         TMP_DIR.mkdir(parents=True, exist_ok=True)
-        dest = TMP_DIR / "hcad_parcel.zip"
-        if dest.exists() and dest.stat().st_size > 10_000:
-            log.info("Using cached HCAD parcel zip: %s", dest)
+        dest = TMP_DIR / "hcad_real_acct.zip"
+        if dest.exists() and dest.stat().st_size > 100_000:
+            log.info("Using cached HCAD zip: %s (%d bytes)", dest, dest.stat().st_size)
             return dest
 
-        year = datetime.utcnow().year
-        candidate_urls = [
-            f"https://pdata.hcad.org/data/cama/{year}/real_acct.zip",
-            f"https://pdata.hcad.org/data/cama/{year-1}/real_acct.zip",
-            "https://pdata.hcad.org/Pdata/property_account.zip",
-        ]
-        try:
-            resp = requests.get(HCAD_BULK_PAGE, timeout=30)
-            soup = BeautifulSoup(resp.text, "lxml")
-            for a in soup.find_all("a", href=True):
-                href = a["href"]
-                if "real_acct" in href.lower() and href.endswith(".zip"):
-                    if not href.startswith("http"):
-                        href = "https://pdata.hcad.org" + href
-                    candidate_urls.insert(0, href)
-                    break
-        except Exception as exc:
-            log.warning("Could not parse HCAD bulk page: %s", exc)
-
-        for url in candidate_urls:
+        for url in self.DOWNLOAD_URLS:
             try:
                 log.info("Trying HCAD download: %s", url)
-                r = requests.get(url, timeout=120, stream=True)
-                if r.status_code == 200 and int(r.headers.get("content-length", 1)) > 10_000:
+                r = requests.get(url, timeout=180, stream=True)
+                if r.status_code == 200:
+                    size = 0
                     with open(dest, "wb") as fh:
                         for chunk in r.iter_content(65536):
                             fh.write(chunk)
-                    log.info("Downloaded HCAD -> %s (%d bytes)", dest, dest.stat().st_size)
-                    return dest
+                            size += len(chunk)
+                    if size > 100_000:
+                        log.info("Downloaded HCAD -> %s (%d bytes)", dest, size)
+                        return dest
+                    else:
+                        log.warning("Downloaded file too small (%d bytes), skipping", size)
+                        dest.unlink(missing_ok=True)
+                else:
+                    log.warning("HTTP %d for %s", r.status_code, url)
             except Exception as exc:
                 log.warning("HCAD download failed (%s): %s", url, exc)
+
+        log.error("All HCAD download URLs failed — address enrichment disabled.")
         return None
 
-    def _load_dbf(self, zip_path: Path):
-        if not HAS_DBF:
-            log.warning("dbfread not installed - skipping parcel enrichment.")
-            return
+    def _load_txt(self, zip_path: Path):
+        """Parse real_acct.txt (tab-delimited) from the zip file."""
         extract_dir = TMP_DIR / "hcad_extracted"
         extract_dir.mkdir(parents=True, exist_ok=True)
+
         try:
             with zipfile.ZipFile(zip_path, "r") as zf:
                 members = zf.namelist()
-                dbf_members = [m for m in members if m.lower().endswith(".dbf")]
-                if not dbf_members:
+                log.info("HCAD zip contents: %s", members)
+                txt_members = [m for m in members if m.lower().endswith(".txt")]
+                if not txt_members:
+                    log.error("No .txt files in HCAD zip: %s", members)
                     return
                 zf.extractall(extract_dir)
         except Exception as exc:
             log.error("Failed to extract HCAD zip: %s", exc)
             return
 
-        priority = ["real_acct.dbf", "account.dbf", "realprop.dbf"]
+        # Find real_acct.txt
         chosen = None
-        for p in priority:
-            c = extract_dir / p
+        for name in ["real_acct.txt", "Real_acct.txt", "REAL_ACCT.TXT"]:
+            c = extract_dir / name
             if c.exists():
                 chosen = c
                 break
         if chosen is None:
-            chosen = extract_dir / dbf_members[0]
+            # Just take the first .txt
+            chosen = extract_dir / txt_members[0]
 
-        log.info("Loading parcel DBF: %s", chosen)
+        log.info("Loading HCAD parcel txt: %s (%d bytes)", chosen, chosen.stat().st_size)
         count = 0
+        errors = 0
+
         try:
-            table = DBF(str(chosen), ignore_missing_memofile=True, encoding="latin-1")
-            for row in table:
-                try:
-                    ku = {k.upper(): v for k, v in dict(row).items()}
-                    owner_raw = str(ku.get("OWNER") or ku.get("OWN1") or ku.get("OWNER_NAME") or "").strip()
-                    if not owner_raw:
+            with open(chosen, "r", encoding="latin-1", errors="replace") as fh:
+                for line in fh:
+                    try:
+                        cols = line.rstrip("\n").split("\t")
+                        if len(cols) < 10:
+                            continue
+
+                        owner_raw = str(cols[2]).strip() if len(cols) > 2 else ""
+                        if not owner_raw or owner_raw.lower() in ("owner_name", "owner"):
+                            continue  # skip header row
+
+                        # Site address
+                        site_addr = str(cols[7]).strip()  if len(cols) > 7  else ""
+                        site_city = str(cols[8]).strip()  if len(cols) > 8  else "Houston"
+                        site_zip  = str(cols[10]).strip() if len(cols) > 10 else ""
+
+                        # Mailing address
+                        mail_addr = str(cols[11]).strip() if len(cols) > 11 else ""
+                        mail_city = str(cols[14]).strip() if len(cols) > 14 else ""
+                        mail_state= str(cols[15]).strip() if len(cols) > 15 else "TX"
+                        mail_zip  = str(cols[16]).strip() if len(cols) > 16 else ""
+
+                        parcel = {
+                            "prop_address": site_addr,
+                            "prop_city":    site_city or "Houston",
+                            "prop_state":   "TX",
+                            "prop_zip":     site_zip,
+                            "mail_address": mail_addr,
+                            "mail_city":    mail_city,
+                            "mail_state":   mail_state or "TX",
+                            "mail_zip":     mail_zip,
+                        }
+
+                        for variant in self._name_variants(owner_raw):
+                            if variant not in self._idx:
+                                self._idx[variant] = parcel
+                        count += 1
+
+                    except Exception:
+                        errors += 1
                         continue
-                    parcel = {
-                        "prop_address": str(ku.get("SITE_ADDR") or ku.get("SITEADDR") or "").strip(),
-                        "prop_city":    str(ku.get("SITE_CITY") or "Houston").strip(),
-                        "prop_state":   "TX",
-                        "prop_zip":     str(ku.get("SITE_ZIP") or "").strip(),
-                        "mail_address": str(ku.get("ADDR_1") or ku.get("MAILADR1") or "").strip(),
-                        "mail_city":    str(ku.get("CITY") or ku.get("MAILCITY") or "").strip(),
-                        "mail_state":   str(ku.get("STATE") or ku.get("MAILSTATE") or "").strip(),
-                        "mail_zip":     str(ku.get("ZIP") or ku.get("MAILZIP") or "").strip(),
-                    }
-                    for variant in self._name_variants(owner_raw):
-                        if variant not in self._idx:
-                            self._idx[variant] = parcel
-                    count += 1
-                except Exception:
-                    continue
+
         except Exception as exc:
-            log.error("Failed to read DBF: %s", exc)
+            log.error("Failed to read HCAD txt: %s", exc)
             return
-        log.info("Parcel index: %d records, %d name variants", count, len(self._idx))
-        self._loaded = True
+
+        log.info("Parcel index built: %d records, %d variants, %d errors",
+                 count, len(self._idx), errors)
+        if count > 0:
+            self._loaded = True
 
     def load(self):
         zip_path = self._download_bulk()
         if zip_path:
-            self._load_dbf(zip_path)
+            self._load_txt(zip_path)
 
     def lookup(self, owner: str) -> dict:
         if not self._loaded or not owner:
