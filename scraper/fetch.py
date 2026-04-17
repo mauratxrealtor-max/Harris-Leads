@@ -537,75 +537,122 @@ class ClerkScraper:
         await page.wait_for_load_state("networkidle", timeout=45_000)
 
     async def _parse_rp_page(self, page, doc_code: str) -> list[dict]:
-        """Extract records from the current result page."""
+        """
+        Parse results table from Harris County Clerk portal.
+
+        Confirmed column structure from live portal (April 2026):
+          0: File Number
+          1: File Date
+          2: Type Vol Page
+          3: Names (contains Grantor:/Grantee: lines)
+          4: Legal Description (contains Desc:/Lot:/Block:/Sec: etc.)
+          5: Pgs
+          6: Film Code  ← has the direct document link
+        """
         records: list[dict] = []
         cat, cat_label = DOC_TYPE_MAP.get(doc_code, ("other", doc_code))
         html = await page.content()
         soup = BeautifulSoup(html, "lxml")
 
-        # Find the results grid
+        # Find results table — look for "File Number" header
         result_table = None
         for tbl in soup.find_all("table"):
-            text = tbl.get_text(" ", strip=True).lower()
-            if any(k in text for k in ("file number", "instrument", "grantor", "filed date", "film code")):
+            hdrs = tbl.get_text(" ", strip=True).lower()
+            if "file number" in hdrs and "file date" in hdrs:
                 result_table = tbl
                 break
+        # Fallback: any table with grantor data
+        if not result_table:
+            for tbl in soup.find_all("table"):
+                if tbl.find(string=re.compile(r"Grantor", re.I)):
+                    result_table = tbl
+                    break
 
         if not result_table:
             log.debug("No result table found for %s", doc_code)
             return records
 
         rows = result_table.find_all("tr")
-        if not rows:
+        if len(rows) < 2:
             return records
-
-        header_cells = [th.get_text(" ", strip=True).lower()
-                        for th in rows[0].find_all(["th", "td"])]
-
-        def colidx(*names) -> int:
-            for name in names:
-                for i, h in enumerate(header_cells):
-                    if name in h:
-                        return i
-            return -1
-
-        idx_doc     = colidx("file number", "instrument", "doc number", "film code")
-        idx_filed   = colidx("filed", "date filed", "record date", "date")
-        idx_grantor = colidx("grantor", "owner", "name")
-        idx_grantee = colidx("grantee", "lender", "party")
-        idx_amount  = colidx("amount", "consideration", "debt")
-        idx_legal   = colidx("legal", "description", "subdivision")
 
         for row in rows[1:]:
             cells = row.find_all(["td", "th"])
-            if not cells or len(cells) < 2:
+            if not cells or len(cells) < 3:
                 continue
             try:
-                def cell_text(idx: int) -> str:
-                    return cells[idx].get_text(" ", strip=True) if 0 <= idx < len(cells) else ""
+                def ct(idx: int) -> str:
+                    return cells[idx].get_text(" ", strip=True) if idx < len(cells) else ""
 
-                link_tag  = row.find("a", href=True)
+                # Col 0: File Number
+                doc_num = ct(0).strip()
+
+                # Col 1: File Date
+                filed = _parse_date(ct(1).strip())
+
+                # Col 3: Names — parse Grantor/Grantee from structured text
+                names_cell = cells[3] if len(cells) > 3 else None
+                grantor, grantee = "", ""
+                if names_cell:
+                    # Find all label:value pairs
+                    names_html = names_cell.get_text("\n", strip=True)
+                    grantors, grantees = [], []
+                    for line in names_html.split("\n"):
+                        line = line.strip()
+                        if line.lower().startswith("grantor:"):
+                            grantors.append(line[8:].strip())
+                        elif line.lower().startswith("grantee:"):
+                            grantees.append(line[8:].strip())
+                    grantor = "; ".join(grantors)
+                    grantee = "; ".join(grantees)
+
+                # Col 4: Legal Description
+                legal_cell = cells[4] if len(cells) > 4 else None
+                legal_text = ""
+                if legal_cell:
+                    legal_text = legal_cell.get_text(" ", strip=True)
+
+                # Col 6: Film Code — has the real document link
                 clerk_url = ""
-                if link_tag:
-                    href = link_tag.get("href", "")
-                    clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
+                link_cell = cells[6] if len(cells) > 6 else None
+                if link_cell:
+                    a = link_cell.find("a", href=True)
+                    if a:
+                        href = a.get("href", "")
+                        if href.startswith("http"):
+                            clerk_url = href
+                        elif href.startswith("/"):
+                            clerk_url = CLERK_BASE + href
+                        else:
+                            # Build URL from film code text
+                            film_code = a.get_text(strip=True)
+                            if film_code:
+                                clerk_url = f"https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?ID={film_code}"
 
-                doc_num = cell_text(idx_doc)
-                if not doc_num and link_tag:
-                    doc_num = link_tag.get_text(" ", strip=True)
+                # Fallback doc_num from film code link text
+                if not doc_num and link_cell:
+                    a = link_cell.find("a")
+                    if a:
+                        doc_num = a.get_text(strip=True)
 
-                legal_text = cell_text(idx_legal).strip()
-                prop_addr  = _extract_address_from_legal(legal_text)
+                # Amount — not in this table, will be empty
+                amount = None
+
+                legal_text = legal_text.strip()
+                prop_addr = _extract_address_from_legal(legal_text)
+
+                if not doc_num:
+                    continue
 
                 records.append({
-                    "doc_num":      doc_num.strip(),
+                    "doc_num":      doc_num,
                     "doc_type":     doc_code,
-                    "filed":        _parse_date(cell_text(idx_filed)),
+                    "filed":        filed,
                     "cat":          cat,
                     "cat_label":    cat_label,
-                    "owner":        cell_text(idx_grantor).strip(),
-                    "grantee":      cell_text(idx_grantee).strip(),
-                    "amount":       _parse_amount(cell_text(idx_amount)),
+                    "owner":        grantor,
+                    "grantee":      grantee,
+                    "amount":       amount,
                     "legal":        legal_text,
                     "prop_address": prop_addr,
                     "prop_city":    "Houston",
