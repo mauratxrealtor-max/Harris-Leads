@@ -594,60 +594,81 @@ class ClerkScraper:
                 def ct(idx: int) -> str:
                     return cells[idx].get_text(" ", strip=True) if idx < len(cells) else ""
 
-                # Confirmed layout from live portal (38 cells per row):
-                # 0: empty/checkbox
-                # 1: File Number (RP-YYYY-NNNNNN)
-                # 2: File Date
-                # 3: Type (JUDGE, etc.)
-                # 4+: Names (Grantor/Grantee mixed in)
-                # Last cells: Legal Description, Film Code link
-
-                # Col 1: File Number
-                doc_num = ct(1).strip()
-                if not doc_num or doc_num.lower() in ("file number", ""):
-                    # Try col 0
-                    doc_num = ct(0).strip()
+                # Find doc_num — look for RP-YYYY-NNNNNN pattern in first few cells
+                doc_num = ""
+                for i in range(min(4, len(cells))):
+                    val = ct(i).strip()
+                    if re.match(r'^[A-Z]{1,4}-\d{4}-\d+$', val):
+                        doc_num = val
+                        break
+                if not doc_num:
+                    # Fallback: col 1 if it looks like a doc number
+                    val = ct(1).strip()
+                    if val and val.lower() not in ("file number", "") and len(val) > 3:
+                        doc_num = val
                 if not doc_num or len(doc_num) < 3:
                     continue
 
-                # Col 2: File Date
+                # File Date: col 2
                 filed = _parse_date(ct(2).strip())
 
-                # Cols 4 onwards: scan for Grantor/Grantee text
+                # Scan ALL cells for Grantor/Grantee text
                 grantors, grantees = [], []
-                for i in range(3, min(len(cells), 15)):
-                    txt = ct(i)
-                    if "Grantor" in txt:
-                        # Extract name after "Grantor :"
-                        m = re.search(r'Grantor\s*:\s*(.+)', txt)
-                        if m:
-                            grantors.append(m.group(1).strip())
-                    elif "Grantee" in txt:
-                        m = re.search(r'Grantee\s*:\s*(.+)', txt)
-                        if m:
-                            grantees.append(m.group(1).strip())
+                full_text = " ".join(ct(i) for i in range(len(cells)))
+
+                # Extract all Grantor names (stop at next Grantor/Grantee label)
+                for m in re.finditer(
+                    r'Grantor\s*:\s*([\w][\w\s,\.]{1,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|$))',
+                    full_text
+                ):
+                    name = m.group(1).strip().rstrip("|").strip()
+                    if name and name not in grantors:
+                        grantors.append(name)
+
+                # Extract all Grantee names
+                for m in re.finditer(
+                    r'Grantee\s*:\s*([\w][\w\s,\.]{1,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|$))',
+                    full_text
+                ):
+                    name = m.group(1).strip().rstrip("|").strip()
+                    if name and name not in grantees:
+                        grantees.append(name)
 
                 grantor = "; ".join(grantors) if grantors else ct(4)[:100]
                 grantee = "; ".join(grantees)
 
-                # Legal description: scan all cells for one with Desc/Lot/Block/Comment
+                # Legal description: scan all cells
                 legal_text = ""
-                for i in range(3, len(cells)):
+                for i in range(len(cells)):
                     txt = ct(i)
-                    if any(k in txt for k in ("Desc:", "Lot:", "Block:", "Comment:", "Abstract:")):
+                    if any(k in txt for k in ("Desc:", "Lot:", "Block:", "Comment:", "Abstract:", "Sec:")):
                         legal_text = txt
                         break
 
-                # Clerk URL: find any hyperlink in the row
+                # Clerk URL: look for Film Code link (last column with RP- link)
                 clerk_url = ""
+                # First try: find <a> whose text looks like a doc number
                 for a in row.find_all("a", href=True):
                     href = a.get("href", "")
-                    if href.startswith("http"):
-                        clerk_url = href
+                    text = a.get_text(strip=True)
+                    if re.match(r'^[A-Z]+-\d{4}-\d+$', text):
+                        if href.startswith("http"):
+                            clerk_url = href
+                        elif href.startswith("/"):
+                            clerk_url = CLERK_BASE + href
+                        elif "javascript" not in href.lower():
+                            clerk_url = CLERK_BASE + "/" + href.lstrip("/")
+                        # Build URL from doc number if href is javascript
+                        if not clerk_url or "javascript" in clerk_url.lower():
+                            clerk_url = f"https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?SID={text}"
                         break
-                    elif href.startswith("/"):
-                        clerk_url = CLERK_BASE + href
-                        break
+                # Fallback: any non-javascript link in row
+                if not clerk_url:
+                    for a in row.find_all("a", href=True):
+                        href = a.get("href", "")
+                        if "javascript" not in href.lower():
+                            clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
+                            break
 
                 prop_addr = _extract_address_from_legal(legal_text)
 
