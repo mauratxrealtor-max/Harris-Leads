@@ -706,11 +706,14 @@ class ClerkScraper:
                         legal_text = key + " " + m.group(1).strip()
                         break
 
-                # Clerk URL — build from doc number (portal links are JS postbacks)
-                clerk_url = f"https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx?SID={raw['doc_num']}"
-                # Override with real link if found
+                # Clerk URL — build working direct search link
+                clerk_url = (
+                    f"https://www.cclerk.hctx.net/applications/websearch/RP_R.aspx"
+                    f"?FileNo={raw['doc_num']}"
+                )
+                # Override with real link if a non-javascript href was found
                 for href in raw["hrefs"]:
-                    if href and "javascript" not in href.lower() and len(href) > 5:
+                    if href and "javascript" not in href.lower() and "EComm" not in href and len(href) > 5:
                         clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
                         break
 
