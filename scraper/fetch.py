@@ -584,65 +584,70 @@ class ClerkScraper:
             first_cells = rows[1].find_all(["td", "th"])
             log.info("  First row has %d cells: %s",
                      len(first_cells),
-                     " | ".join(c.get_text(" ", strip=True)[:30] for c in first_cells[:5]))
+                     " | ".join(c.get_text(" ", strip=True)[:30] for c in first_cells[:8]))
 
         for row in rows[1:]:
             cells = row.find_all(["td", "th"])
-            if not cells or len(cells) < 3:
+            if not cells or len(cells) < 4:
                 continue
             try:
                 def ct(idx: int) -> str:
                     return cells[idx].get_text(" ", strip=True) if idx < len(cells) else ""
 
-                # Col 0: File Number
-                doc_num = ct(0).strip()
-                # Skip header rows and empty rows
+                # Confirmed layout from live portal (38 cells per row):
+                # 0: empty/checkbox
+                # 1: File Number (RP-YYYY-NNNNNN)
+                # 2: File Date
+                # 3: Type (JUDGE, etc.)
+                # 4+: Names (Grantor/Grantee mixed in)
+                # Last cells: Legal Description, Film Code link
+
+                # Col 1: File Number
+                doc_num = ct(1).strip()
                 if not doc_num or doc_num.lower() in ("file number", ""):
+                    # Try col 0
+                    doc_num = ct(0).strip()
+                if not doc_num or len(doc_num) < 3:
                     continue
-                # Skip rows that don't look like doc numbers (RP-YYYY-NNNNNN pattern)
-                # but still accept any non-empty value
 
-                # Col 1: File Date
-                filed = _parse_date(ct(1).strip())
+                # Col 2: File Date
+                filed = _parse_date(ct(2).strip())
 
-                # Col 3: Names — parse Grantor/Grantee
-                names_text = ct(3) if len(cells) > 3 else ""
+                # Cols 4 onwards: scan for Grantor/Grantee text
                 grantors, grantees = [], []
-                for line in names_text.replace("Grantor:", "\nGrantor:").replace("Grantee:", "\nGrantee:").split("\n"):
-                    line = line.strip()
-                    if line.lower().startswith("grantor:"):
-                        val = line[8:].strip()
-                        if val:
-                            grantors.append(val)
-                    elif line.lower().startswith("grantee:"):
-                        val = line[8:].strip()
-                        if val:
-                            grantees.append(val)
-                grantor = "; ".join(grantors) if grantors else names_text[:100]
+                for i in range(3, min(len(cells), 15)):
+                    txt = ct(i)
+                    if "Grantor" in txt:
+                        # Extract name after "Grantor :"
+                        m = re.search(r'Grantor\s*:\s*(.+)', txt)
+                        if m:
+                            grantors.append(m.group(1).strip())
+                    elif "Grantee" in txt:
+                        m = re.search(r'Grantee\s*:\s*(.+)', txt)
+                        if m:
+                            grantees.append(m.group(1).strip())
+
+                grantor = "; ".join(grantors) if grantors else ct(4)[:100]
                 grantee = "; ".join(grantees)
 
-                # Col 4: Legal Description
-                legal_text = ct(4).strip() if len(cells) > 4 else ""
+                # Legal description: scan all cells for one with Desc/Lot/Block/Comment
+                legal_text = ""
+                for i in range(3, len(cells)):
+                    txt = ct(i)
+                    if any(k in txt for k in ("Desc:", "Lot:", "Block:", "Comment:", "Abstract:")):
+                        legal_text = txt
+                        break
 
-                # Col 6: Film Code link
+                # Clerk URL: find any hyperlink in the row
                 clerk_url = ""
-                if len(cells) > 6:
-                    a = cells[6].find("a", href=True)
-                    if a:
-                        href = a.get("href", "")
-                        if href.startswith("http"):
-                            clerk_url = href
-                        elif href.startswith("/"):
-                            clerk_url = CLERK_BASE + href
-                # Fallback: any link in the row
-                if not clerk_url:
-                    a = row.find("a", href=True)
-                    if a:
-                        href = a.get("href", "")
-                        if href.startswith("http"):
-                            clerk_url = href
-                        elif href.startswith("/"):
-                            clerk_url = CLERK_BASE + href
+                for a in row.find_all("a", href=True):
+                    href = a.get("href", "")
+                    if href.startswith("http"):
+                        clerk_url = href
+                        break
+                    elif href.startswith("/"):
+                        clerk_url = CLERK_BASE + href
+                        break
 
                 prop_addr = _extract_address_from_legal(legal_text)
 
