@@ -989,16 +989,4 @@ async def main():
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))
 
-import json, csv
-with open('data/output.json', 'r') as f:
-leads = json.load(f)
-fields = [
-'first_name', 'last_name', 'property_address',
-'mailing_address', 'city', 'state', 'zip',
-'seller_score', 'document_type', 'file_date'
-]
-with open('data/output.csv', 'w', newline='') as f:
-writer = csv.DictWriter(f, fieldnames=fields, extrasaction='ignore')
-writer.writeheader()
-writer.writerows(leads)
-print(f'Exported {len(leads)} leads to output.csv')
+
