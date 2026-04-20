@@ -1,12 +1,12 @@
 {
-  "fetched_at": "2026-04-20T13:42:49.968449Z",
+  "fetched_at": "2026-04-20T23:14:21.551800Z",
   "source": "Harris County Clerk",
   "date_range": {
     "from": "2026-04-06",
     "to": "2026-04-20"
   },
-  "total": 77,
-  "with_address": 48,
+  "total": 78,
+  "with_address": 49,
   "records": [
     {
       "doc_num": "RP-2026-141240",
@@ -209,6 +209,31 @@
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-133386",
       "flags": [
         "Judgment lien",
+        "New this week"
+      ],
+      "score": 60
+    },
+    {
+      "doc_num": "RP-2026-149496",
+      "doc_type": "PRO",
+      "filed": "2026-04-20",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "PUCKETT JOHN R EST; PUCKETT JOHN R SR EST",
+      "grantee": "BURTSCHELL JOHNNIE LYNN; DEAN BRENDA JOYCE; PUCKETT JOHN R JR; PUCKETT MARTHA L; SEMPE CHERYL ANNE; WEIMAN BARBARA LYNN",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "4045 OVERBROOK LN",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77027",
+      "mail_address": "4045 OVERBROOK LN",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77027-3937",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-149496",
+      "flags": [
+        "Probate / estate",
         "New this week"
       ],
       "score": 60
