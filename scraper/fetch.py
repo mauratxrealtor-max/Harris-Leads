@@ -959,9 +959,9 @@ async def main():
         if hit and hit.get("prop_address"):
             rec.update({k: v for k, v in hit.items() if v})
             enriched += 1
-            log.debug("  HIT: '%s' -> %s", owner[:40], hit["prop_address"])
+            log.info("  HIT: '%s' -> %s", owner[:40], hit["prop_address"])
         else:
-            log.debug("  MISS: '%s'", owner[:60])
+            log.info("  MISS: '%s'", owner[:60])
         web_lookups += 1
     log.info("Parcel enrichment: %d/%d matched", enriched, len(records))
 
@@ -988,5 +988,3 @@ async def main():
 
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))
-
-
