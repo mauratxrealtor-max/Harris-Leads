@@ -922,6 +922,11 @@ async def main():
     parcel_db.load()
     enriched = 0
     web_lookups = 0
+
+    # Log first 10 owner names so we can see what we're looking up
+    sample_owners = [r.get("owner","") for r in records[:10] if r.get("owner","")]
+    log.info("Sample owner names: %s", sample_owners)
+
     for rec in records:
         owner = rec.get("owner", "")
         if not owner:
@@ -930,6 +935,9 @@ async def main():
         if hit and hit.get("prop_address"):
             rec.update({k: v for k, v in hit.items() if v})
             enriched += 1
+            log.debug("  HIT: '%s' -> %s", owner[:40], hit["prop_address"])
+        else:
+            log.debug("  MISS: '%s'", owner[:60])
         web_lookups += 1
     log.info("Parcel enrichment: %d/%d matched", enriched, len(records))
 
