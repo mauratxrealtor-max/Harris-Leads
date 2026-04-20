@@ -1,12 +1,12 @@
 {
-  "fetched_at": "2026-04-20T23:14:21.551800Z",
+  "fetched_at": "2026-04-20T23:22:40.359930Z",
   "source": "Harris County Clerk",
   "date_range": {
     "from": "2026-04-06",
     "to": "2026-04-20"
   },
   "total": 78,
-  "with_address": 49,
+  "with_address": 56,
   "records": [
     {
       "doc_num": "RP-2026-141240",
@@ -148,14 +148,14 @@
       "grantee": "COLEMAN SHERRI HARNAR; HARNAR SHERRI A; HARNAR SHERRI A                     Comment: SEE INSTRUMENT",
       "amount": null,
       "legal": "Comment: SEE INSTRUMENT",
-      "prop_address": "0 FIREFLY AVE",
+      "prop_address": "2016 MAIN ST 1120",
       "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "77017",
-      "mail_address": "1100 ORCHID ST",
+      "prop_zip": "77002",
+      "mail_address": "2016 MAIN ST APT 1120",
       "mail_city": "HOUSTON",
       "mail_state": "TX",
-      "mail_zip": "77017-5510",
+      "mail_zip": "77002-8853",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-142532",
       "flags": [
         "Judgment lien",
@@ -414,6 +414,56 @@
       "score": 60
     },
     {
+      "doc_num": "RP-2026-141949",
+      "doc_type": "PRO",
+      "filed": "2026-04-14",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "UDDEN MARY THERESA EST",
+      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "2001 HOLCOMBE BLVD 601",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77030",
+      "mail_address": "2001 HOLCOMBE BLVD UNIT 601",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77030-4226",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-141949",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 60
+    },
+    {
+      "doc_num": "RP-2026-141948",
+      "doc_type": "PRO",
+      "filed": "2026-04-14",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "UDDEN MARY THERESA EST",
+      "grantee": "DAVIS ANN CAMILE; DAVIS GREGORY EUGENE; DAVIS MARION LINDSEY; LINDSEY MARION PRIESTER JR; MARKS LUCY MAY; UDDEN R ANDREW; UDDEN R ANDREW                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "2001 HOLCOMBE BLVD 601",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77030",
+      "mail_address": "2001 HOLCOMBE BLVD UNIT 601",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77030-4226",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-141948",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 60
+    },
+    {
       "doc_num": "RP-2026-141772",
       "doc_type": "PRO",
       "filed": "2026-04-14",
@@ -432,6 +482,31 @@
       "mail_state": "TX",
       "mail_zip": "77536-2702",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-141772",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 60
+    },
+    {
+      "doc_num": "RP-2026-141759",
+      "doc_type": "PRO",
+      "filed": "2026-04-14",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "WHITEHEAD JOHNNY G EST",
+      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "1038 USENER ST",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77009",
+      "mail_address": "1038 USENER ST",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77009-7313",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-141759",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -657,6 +732,56 @@
       "mail_state": "TX",
       "mail_zip": "77041-6854",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-140987",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 60
+    },
+    {
+      "doc_num": "RP-2026-140488",
+      "doc_type": "PRO",
+      "filed": "2026-04-14",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "CAVENAUGH ROBERT WILSON EST",
+      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "11614 ADVANCE DR",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77065",
+      "mail_address": "11614 ADVANCE DR",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77065-2602",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-140488",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 60
+    },
+    {
+      "doc_num": "RP-2026-140487",
+      "doc_type": "PRO",
+      "filed": "2026-04-14",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "CAVENAUGH ROBERT WILSON EST",
+      "grantee": "CAVENAUGH VALERIE MESTON; TILLMAN JENNIFER LATOURRETTE",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "11614 ADVANCE DR",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77065",
+      "mail_address": "11614 ADVANCE DR",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77065-2602",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-140487",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -1014,6 +1139,31 @@
       "score": 60
     },
     {
+      "doc_num": "RP-2026-133714",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "MORENO PETRA SALCIDO EST",
+      "grantee": "MORENO DAVID SALCINO; MORENO PILAR; MORENO PILAR                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "7401 LAMAR ST",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77011",
+      "mail_address": "7401 LAMAR ST",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77011-4836",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-133714",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 60
+    },
+    {
       "doc_num": "RP-2026-133438",
       "doc_type": "PRO",
       "filed": "2026-04-08",
@@ -1039,6 +1189,31 @@
       "score": 60
     },
     {
+      "doc_num": "RP-2026-133437",
+      "doc_type": "PRO",
+      "filed": "2026-04-08",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "BARAJAS ELIZABETH",
+      "grantee": "GUTIERREZ VICTORIA EST; GUTIERREZ VICTORIA R EST",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "5001 COCHRAN ST",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77009",
+      "mail_address": "5001 COCHRAN ST",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77009-2118",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-133437",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 60
+    },
+    {
       "doc_num": "RP-2026-133436",
       "doc_type": "PRO",
       "filed": "2026-04-08",
@@ -1048,14 +1223,14 @@
       "grantee": "GUTIERREZ VICTORIA EST; GUTIERREZ VICTORIA R EST",
       "amount": null,
       "legal": "Comment: SEE INSTRUMENT",
-      "prop_address": "0 GARVIN ST",
+      "prop_address": "11509 MCGALLION RD",
       "prop_city": "HOUSTON",
       "prop_state": "TX",
-      "prop_zip": "77064",
-      "mail_address": "8110 GARVIN AVE",
+      "prop_zip": "77076",
+      "mail_address": "11509 MCGALLION RD",
       "mail_city": "HOUSTON",
       "mail_state": "TX",
-      "mail_zip": "77064-3552",
+      "mail_zip": "77076-1928",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-133436",
       "flags": [
         "Probate / estate",
@@ -1314,81 +1489,6 @@
       "score": 55
     },
     {
-      "doc_num": "RP-2026-141949",
-      "doc_type": "PRO",
-      "filed": "2026-04-14",
-      "cat": "probate",
-      "cat_label": "Probate Document",
-      "owner": "UDDEN MARY THERESA EST",
-      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
-      "amount": null,
-      "legal": "Comment: SEE INSTRUMENT",
-      "prop_address": "",
-      "prop_city": "Houston",
-      "prop_state": "TX",
-      "prop_zip": "",
-      "mail_address": "",
-      "mail_city": "",
-      "mail_state": "",
-      "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-141949",
-      "flags": [
-        "Probate / estate",
-        "New this week"
-      ],
-      "score": 55
-    },
-    {
-      "doc_num": "RP-2026-141948",
-      "doc_type": "PRO",
-      "filed": "2026-04-14",
-      "cat": "probate",
-      "cat_label": "Probate Document",
-      "owner": "UDDEN MARY THERESA EST",
-      "grantee": "DAVIS ANN CAMILE; DAVIS GREGORY EUGENE; DAVIS MARION LINDSEY; LINDSEY MARION PRIESTER JR; MARKS LUCY MAY; UDDEN R ANDREW; UDDEN R ANDREW                     Comment: SEE INSTRUMENT",
-      "amount": null,
-      "legal": "Comment: SEE INSTRUMENT",
-      "prop_address": "",
-      "prop_city": "Houston",
-      "prop_state": "TX",
-      "prop_zip": "",
-      "mail_address": "",
-      "mail_city": "",
-      "mail_state": "",
-      "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-141948",
-      "flags": [
-        "Probate / estate",
-        "New this week"
-      ],
-      "score": 55
-    },
-    {
-      "doc_num": "RP-2026-141759",
-      "doc_type": "PRO",
-      "filed": "2026-04-14",
-      "cat": "probate",
-      "cat_label": "Probate Document",
-      "owner": "WHITEHEAD JOHNNY G EST",
-      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
-      "amount": null,
-      "legal": "Comment: SEE INSTRUMENT",
-      "prop_address": "",
-      "prop_city": "Houston",
-      "prop_state": "TX",
-      "prop_zip": "",
-      "mail_address": "",
-      "mail_city": "",
-      "mail_state": "",
-      "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-141759",
-      "flags": [
-        "Probate / estate",
-        "New this week"
-      ],
-      "score": 55
-    },
-    {
       "doc_num": "RP-2026-141740",
       "doc_type": "PRO",
       "filed": "2026-04-14",
@@ -1457,56 +1557,6 @@
       "mail_state": "",
       "mail_zip": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-141153",
-      "flags": [
-        "Probate / estate",
-        "New this week"
-      ],
-      "score": 55
-    },
-    {
-      "doc_num": "RP-2026-140488",
-      "doc_type": "PRO",
-      "filed": "2026-04-14",
-      "cat": "probate",
-      "cat_label": "Probate Document",
-      "owner": "CAVENAUGH ROBERT WILSON EST",
-      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
-      "amount": null,
-      "legal": "Comment: SEE INSTRUMENT",
-      "prop_address": "",
-      "prop_city": "Houston",
-      "prop_state": "TX",
-      "prop_zip": "",
-      "mail_address": "",
-      "mail_city": "",
-      "mail_state": "",
-      "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-140488",
-      "flags": [
-        "Probate / estate",
-        "New this week"
-      ],
-      "score": 55
-    },
-    {
-      "doc_num": "RP-2026-140487",
-      "doc_type": "PRO",
-      "filed": "2026-04-14",
-      "cat": "probate",
-      "cat_label": "Probate Document",
-      "owner": "CAVENAUGH ROBERT WILSON EST",
-      "grantee": "CAVENAUGH VALERIE MESTON; TILLMAN JENNIFER LATOURRETTE",
-      "amount": null,
-      "legal": "Comment: SEE INSTRUMENT",
-      "prop_address": "",
-      "prop_city": "Houston",
-      "prop_state": "TX",
-      "prop_zip": "",
-      "mail_address": "",
-      "mail_city": "",
-      "mail_state": "",
-      "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-140487",
       "flags": [
         "Probate / estate",
         "New this week"
@@ -1639,31 +1689,6 @@
       "score": 55
     },
     {
-      "doc_num": "RP-2026-133714",
-      "doc_type": "PRO",
-      "filed": "2026-04-08",
-      "cat": "probate",
-      "cat_label": "Probate Document",
-      "owner": "MORENO PETRA SALCIDO EST",
-      "grantee": "MORENO DAVID SALCINO; MORENO PILAR; MORENO PILAR                     Comment: SEE INSTRUMENT",
-      "amount": null,
-      "legal": "Comment: SEE INSTRUMENT",
-      "prop_address": "",
-      "prop_city": "Houston",
-      "prop_state": "TX",
-      "prop_zip": "",
-      "mail_address": "",
-      "mail_city": "",
-      "mail_state": "",
-      "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-133714",
-      "flags": [
-        "Probate / estate",
-        "New this week"
-      ],
-      "score": 55
-    },
-    {
       "doc_num": "RP-2026-133666",
       "doc_type": "PRO",
       "filed": "2026-04-08",
@@ -1682,31 +1707,6 @@
       "mail_state": "",
       "mail_zip": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-133666",
-      "flags": [
-        "Probate / estate",
-        "New this week"
-      ],
-      "score": 55
-    },
-    {
-      "doc_num": "RP-2026-133437",
-      "doc_type": "PRO",
-      "filed": "2026-04-08",
-      "cat": "probate",
-      "cat_label": "Probate Document",
-      "owner": "BARAJAS ELIZABETH",
-      "grantee": "GUTIERREZ VICTORIA EST; GUTIERREZ VICTORIA R EST",
-      "amount": null,
-      "legal": "Comment: SEE INSTRUMENT",
-      "prop_address": "",
-      "prop_city": "Houston",
-      "prop_state": "TX",
-      "prop_zip": "",
-      "mail_address": "",
-      "mail_city": "",
-      "mail_state": "",
-      "mail_zip": "",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-133437",
       "flags": [
         "Probate / estate",
         "New this week"
