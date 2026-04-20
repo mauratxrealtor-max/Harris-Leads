@@ -294,37 +294,61 @@ class ParcelLookup:
             return {}
 
         # Handle multiple grantors separated by ;
+        # Try each part, preferring ones with real (non-zero) addresses
         if ";" in owner:
+            best = {}
             for part in owner.split(";"):
-                hit = self.lookup(part.strip())
+                hit = self._lookup_single(part.strip())
                 if hit and hit.get("prop_address"):
-                    return hit
+                    addr = hit["prop_address"]
+                    # Prefer non-zero addresses
+                    if not addr.startswith("0 "):
+                        return hit
+                    if not best:
+                        best = hit
+            return best
+
+        return self._lookup_single(owner)
+
+    def _lookup_single(self, owner: str) -> dict:
+        """Look up a single owner name (no semicolons)."""
+        if not owner:
             return {}
 
         n = self._normalise(owner)
 
         # 1. Exact match
-        if n in self._idx:
-            return self._idx[n]
+        hit = self._idx.get(n)
+        if hit:
+            return hit
 
-        # 2. Strip common suffixes
+        # 2. Strip suffixes: EST, ESTATE, SR, JR, II, III
         n_clean = re.sub(r"\s*\b(EST|ESTATE|SR|JR|II|III|IV)\b.*", "", n).strip()
-        if n_clean != n and n_clean in self._idx:
-            return self._idx[n_clean]
+        if n_clean != n:
+            hit = self._idx.get(n_clean)
+            if hit:
+                return hit
 
-        # 3. Fast 2-word prefix lookup (O(1) using prefix index)
+        # 3. Fast 2-word prefix lookup — skip vacant/zero addresses
         parts = n_clean.split()
         if len(parts) >= 2:
             prefix2 = f"{parts[0]} {parts[1]}"
             hit = self._prefix_idx.get(prefix2)
-            if hit and hit.get("prop_address"):
+            if hit and hit.get("prop_address") and not hit["prop_address"].startswith("0 "):
                 return hit
 
         # 4. Try reversed name (LAST FIRST -> FIRST LAST)
         if len(parts) >= 2:
             rev = f"{parts[-1]} {parts[0]}"
             hit = self._prefix_idx.get(rev)
-            if hit and hit.get("prop_address"):
+            if hit and hit.get("prop_address") and not hit["prop_address"].startswith("0 "):
+                return hit
+
+        # 5. Fall back to prefix match even with zero address
+        if len(parts) >= 2:
+            prefix2 = f"{parts[0]} {parts[1]}"
+            hit = self._prefix_idx.get(prefix2)
+            if hit:
                 return hit
 
         return {}
