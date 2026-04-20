@@ -1,5 +1,5 @@
 {
-  "fetched_at": "2026-04-20T12:09:28.167761Z",
+  "fetched_at": "2026-04-20T12:21:53.607323Z",
   "source": "Harris County Clerk",
   "date_range": {
     "from": "2026-04-06",
@@ -70,14 +70,14 @@
       "grantee": "CITY OF PEARLAND",
       "amount": null,
       "legal": "Desc: GREEN TEE TERRACE Sec: 2 Reserve: Q Related Docs",
-      "prop_address": "0 FRUGE RD",
-      "prop_city": "HOUSTON",
+      "prop_address": "30003 DRAGON FLY DR",
+      "prop_city": "TOMBALL",
       "prop_state": "TX",
-      "prop_zip": "77047",
-      "mail_address": "111 E LOCUST ST",
-      "mail_city": "ANGLETON",
+      "prop_zip": "77377",
+      "mail_address": "P O BOX 1525",
+      "mail_city": "HOUSTON",
       "mail_state": "TX",
-      "mail_zip": "77515-4642",
+      "mail_zip": "77251-1525",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-136113",
       "flags": [
         "Judgment lien",
