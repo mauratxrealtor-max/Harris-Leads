@@ -337,14 +337,27 @@ class ParcelLookup:
             if hit and hit.get("prop_address") and not hit["prop_address"].startswith("0 "):
                 return hit
 
-        # 4. Try reversed name (LAST FIRST -> FIRST LAST)
+        # 4. Fuzzy first-name match: last name + first 3 chars of first name
+        #    Handles JOHNNY->JOHN, BESSIE->BES, LEIGH-ANN->LEI etc.
+        if len(parts) >= 2:
+            short = parts[1][:3]
+            for key, val in self._idx.items():
+                kparts = key.split()
+                if (len(kparts) >= 2
+                        and kparts[0] == parts[0]
+                        and kparts[1].startswith(short)
+                        and val.get("prop_address")
+                        and not val["prop_address"].startswith("0 ")):
+                    return val
+
+        # 5. Try reversed name (LAST FIRST -> FIRST LAST)
         if len(parts) >= 2:
             rev = f"{parts[-1]} {parts[0]}"
             hit = self._prefix_idx.get(rev)
             if hit and hit.get("prop_address") and not hit["prop_address"].startswith("0 "):
                 return hit
 
-        # 5. Fall back to prefix match even with zero address
+        # 6. Fall back to prefix match even with zero address
         if len(parts) >= 2:
             prefix2 = f"{parts[0]} {parts[1]}"
             hit = self._prefix_idx.get(prefix2)
