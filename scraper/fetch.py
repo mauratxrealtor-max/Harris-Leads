@@ -350,14 +350,33 @@ class ParcelLookup:
                         and not val["prop_address"].startswith("0 ")):
                     return val
 
-        # 5. Try reversed name (LAST FIRST -> FIRST LAST)
+        # 5. Handle "ESTATE OF FIRSTNAME LASTNAME" format
+        #    Rearrange to LASTNAME FIRSTNAME and retry
+        estate_m = re.match(r'^ESTATE\s+OF\s+(.+)', n_clean)
+        if estate_m:
+            words = estate_m.group(1).split()
+            if len(words) >= 2:
+                # Try LAST FIRST format (last word is last name)
+                rearranged = f"{words[-1]} {' '.join(words[:-1])}"
+                hit = self._idx.get(rearranged)
+                if hit and hit.get("prop_address"):
+                    return hit
+                rprefix = f"{words[-1]} {words[0][:3]}" if words else ""
+                for key, val in self._idx.items():
+                    kparts = key.split()
+                    if (len(kparts) >= 2 and kparts[0] == words[-1]
+                            and val.get("prop_address")
+                            and not val["prop_address"].startswith("0 ")):
+                        return val
+
+        # 6. Try reversed name (LAST FIRST -> FIRST LAST)
         if len(parts) >= 2:
             rev = f"{parts[-1]} {parts[0]}"
             hit = self._prefix_idx.get(rev)
             if hit and hit.get("prop_address") and not hit["prop_address"].startswith("0 "):
                 return hit
 
-        # 6. Fall back to prefix match even with zero address
+        # 7. Fall back to prefix match even with zero address
         if len(parts) >= 2:
             prefix2 = f"{parts[0]} {parts[1]}"
             hit = self._prefix_idx.get(prefix2)
