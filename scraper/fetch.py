@@ -146,6 +146,7 @@ def _extract_address_from_legal(legal: str) -> str:
 
 
 def _deduplicate(records: list[dict]) -> list[dict]:
+    # Pass 1: remove exact doc_num duplicates
     seen: set[str] = set()
     out: list[dict] = []
     for rec in records:
@@ -153,7 +154,35 @@ def _deduplicate(records: list[dict]) -> list[dict]:
         if key not in seen:
             seen.add(key)
             out.append(rec)
-    return out
+
+    # Pass 2: collapse same owner+address into one record (keep highest score)
+    # Group by normalised owner name
+    from collections import defaultdict
+    owner_groups: dict[str, list[dict]] = defaultdict(list)
+    for rec in out:
+        owner_key = re.sub(r"\s+", " ", (rec.get("owner") or "").upper().strip())
+        owner_groups[owner_key].append(rec)
+
+    final: list[dict] = []
+    for owner_key, group in owner_groups.items():
+        if len(group) == 1:
+            final.append(group[0])
+        else:
+            # Keep record with highest score; merge flags and doc numbers
+            group.sort(key=lambda r: r.get("score", 0), reverse=True)
+            best = dict(group[0])
+            all_flags = []
+            all_docs = []
+            for r in group:
+                all_flags.extend(r.get("flags", []))
+                all_docs.append(r.get("doc_num", ""))
+            best["flags"] = list(dict.fromkeys(all_flags))
+            best["doc_num"] = ", ".join(d for d in all_docs if d)
+            final.append(best)
+
+    log.info("Dedup: %d -> %d (pass1) -> %d (pass2, collapsed same owner)",
+             len(records), len(out), len(final))
+    return final
 
 
 # ---------------------------------------------------------------------------
@@ -322,22 +351,41 @@ class ParcelLookup:
         if hit:
             return hit
 
-        # 2. Strip suffixes: EST, ESTATE, SR, JR, II, III
+        # 2. Handle "ESTATE OF FIRSTNAME ... LASTNAME" — last word is last name
+        estate_m = re.match(r'^ESTATE\s+OF\s+(.+)', n)
+        if estate_m:
+            words = estate_m.group(1).split()
+            if words:
+                last = words[-1]
+                # Try LAST FIRST
+                rearranged = f"{last} {' '.join(words[:-1])}".strip()
+                hit = self._idx.get(rearranged)
+                if hit and hit.get("prop_address"):
+                    return hit
+                # Try prefix: LAST + first 3 chars of first name
+                if len(words) >= 2:
+                    prefix = f"{last} {words[0][:3]}"
+                    for key, val in self._idx.items():
+                        if key.startswith(last + " ") and val.get("prop_address") and not val["prop_address"].startswith("0 "):
+                            return val
+
+        # 3. Strip suffixes: EST, ESTATE, SR, JR, II, III
         n_clean = re.sub(r"\s*\b(EST|ESTATE|SR|JR|II|III|IV)\b.*", "", n).strip()
         if n_clean != n:
             hit = self._idx.get(n_clean)
             if hit:
                 return hit
 
-        # 3. Fast 2-word prefix lookup — skip vacant/zero addresses
         parts = n_clean.split()
+
+        # 4. Fast 2-word prefix lookup — skip vacant/zero addresses
         if len(parts) >= 2:
             prefix2 = f"{parts[0]} {parts[1]}"
             hit = self._prefix_idx.get(prefix2)
             if hit and hit.get("prop_address") and not hit["prop_address"].startswith("0 "):
                 return hit
 
-        # 4. Fuzzy first-name match: last name + first 3 chars of first name
+        # 5. Fuzzy first-name match: last name + first 3 chars of first name
         #    Handles JOHNNY->JOHN, BESSIE->BES, LEIGH-ANN->LEI etc.
         if len(parts) >= 2:
             short = parts[1][:3]
@@ -349,25 +397,6 @@ class ParcelLookup:
                         and val.get("prop_address")
                         and not val["prop_address"].startswith("0 ")):
                     return val
-
-        # 5. Handle "ESTATE OF FIRSTNAME LASTNAME" format
-        #    Rearrange to LASTNAME FIRSTNAME and retry
-        estate_m = re.match(r'^ESTATE\s+OF\s+(.+)', n_clean)
-        if estate_m:
-            words = estate_m.group(1).split()
-            if len(words) >= 2:
-                # Try LAST FIRST format (last word is last name)
-                rearranged = f"{words[-1]} {' '.join(words[:-1])}"
-                hit = self._idx.get(rearranged)
-                if hit and hit.get("prop_address"):
-                    return hit
-                rprefix = f"{words[-1]} {words[0][:3]}" if words else ""
-                for key, val in self._idx.items():
-                    kparts = key.split()
-                    if (len(kparts) >= 2 and kparts[0] == words[-1]
-                            and val.get("prop_address")
-                            and not val["prop_address"].startswith("0 ")):
-                        return val
 
         # 6. Try reversed name (LAST FIRST -> FIRST LAST)
         if len(parts) >= 2:
