@@ -146,7 +146,6 @@ def _extract_address_from_legal(legal: str) -> str:
 
 
 def _deduplicate(records: list[dict]) -> list[dict]:
-    # Pass 1: remove exact doc_num duplicates (catches chunk overlaps)
     seen: set[str] = set()
     out: list[dict] = []
     for rec in records:
@@ -154,38 +153,8 @@ def _deduplicate(records: list[dict]) -> list[dict]:
         if key not in seen:
             seen.add(key)
             out.append(rec)
-
-    # Pass 2: collapse same owner + same doc_type into one row
-    # e.g. HALL ROY DOUGLAS with 5 PRO filings -> 1 row with all doc numbers listed
-    from collections import defaultdict
-    groups: dict[str, list[dict]] = defaultdict(list)
-    for rec in out:
-        owner_key = re.sub(r"\s+", " ", (rec.get("owner") or "").upper().strip())
-        type_key  = rec.get("doc_type", "")
-        groups[f"{owner_key}|{type_key}"].append(rec)
-
-    final: list[dict] = []
-    for group in groups.values():
-        if len(group) == 1:
-            final.append(group[0])
-        else:
-            # Keep most recent filing, merge doc numbers and flags
-            group.sort(key=lambda r: r.get("filed", ""), reverse=True)
-            best = dict(group[0])
-            all_flags = []
-            all_docs  = []
-            for r in group:
-                all_flags.extend(r.get("flags", []))
-                dn = r.get("doc_num", "")
-                if dn and dn not in all_docs:
-                    all_docs.append(dn)
-            best["flags"]   = list(dict.fromkeys(all_flags))
-            best["doc_num"] = ", ".join(all_docs[:3])  # show up to 3 doc numbers
-            final.append(best)
-
-    log.info("Dedup: %d raw -> %d unique docs -> %d after owner+type collapse",
-             len(records), len(out), len(final))
-    return final
+    log.info("Dedup: %d raw -> %d unique", len(records), len(out))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1036,7 +1005,7 @@ async def main():
     while cur < chunk_end:
         nxt = min(cur + timedelta(days=CHUNK_DAYS), chunk_end)
         chunks.append((cur.strftime("%Y-%m-%d"), nxt.strftime("%Y-%m-%d")))
-        cur = nxt + timedelta(days=1)  # avoid overlap between chunks
+        cur = nxt
 
     log.info("Scraping %d chunks of %d days each", len(chunks), CHUNK_DAYS)
 
