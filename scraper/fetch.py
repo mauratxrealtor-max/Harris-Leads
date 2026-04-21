@@ -729,11 +729,24 @@ class ClerkScraper:
         for attempt in range(1, 4):
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-                # Wait for full JS render — portal uses ASP.NET UpdatePanels
                 await page.wait_for_load_state("networkidle", timeout=30_000)
-                await asyncio.sleep(2)  # extra buffer for JS to finish rendering form
+                await asyncio.sleep(2)
                 await self._fill_rp_form(page, doc_code, url)
-                return await self._paginate(page, doc_code)
+                recs = await self._paginate(page, doc_code)
+
+                # If we got 0 records, check if the portal is blocking us
+                # (blocked pages return 1 table with no results vs normal empty = 1 table too)
+                # Re-check by looking at page title / content for block indicators
+                if len(recs) == 0 and attempt < 3:
+                    content = await page.content()
+                    if any(x in content.lower() for x in ["session expired", "access denied",
+                                                           "temporarily unavailable", "too many requests"]):
+                        wait = 30 * attempt
+                        log.warning("  Portal blocking detected for %s, waiting %ds...", doc_code, wait)
+                        await asyncio.sleep(wait)
+                        continue
+
+                return recs
             except Exception as exc:
                 log.warning("Attempt %d scraping %s: %s", attempt, doc_code, exc)
                 if attempt < 3:
@@ -759,12 +772,15 @@ class ClerkScraper:
             page = await context.new_page()
             page.set_default_timeout(60_000)
 
-            for doc_code in TARGET_CODES:
+            for i, doc_code in enumerate(TARGET_CODES):
                 url = CLERK_FRCL_URL if doc_code in FRCL_TYPES else CLERK_RP_URL
                 log.info("Fetching %s from %s", doc_code, url)
                 recs = await self._scrape_doc_type(page, doc_code, url)
                 log.info("  %s -> %d records", doc_code, len(recs))
                 all_records.extend(recs)
+                # Human-like delay between doc types (2-5 seconds)
+                if i < len(TARGET_CODES) - 1:
+                    await asyncio.sleep(2 + (i % 3))
 
             await browser.close()
 
@@ -984,15 +1000,33 @@ async def main():
     log.info("Portal FRCL: %s", CLERK_FRCL_URL)
     log.info("=" * 60)
 
-    # 1. Clerk scrape
-    if HAS_PW:
-        scraper = ClerkScraper(date_from, date_to)
-        records = await scraper.fetch_all()
-    else:
-        log.warning("Playwright unavailable - using static scraper.")
-        scraper = StaticClerkScraper(date_from, date_to)
-        records = scraper.fetch_all()
+    # 1. Clerk scrape — split into 15-day chunks to avoid portal pagination issues
+    CHUNK_DAYS = 15
+    all_records: list[dict] = []
+    chunk_end   = datetime.now(timezone.utc)
+    chunk_start = chunk_end - timedelta(days=LOOKBACK_DAYS)
 
+    chunks = []
+    cur = chunk_start
+    while cur < chunk_end:
+        nxt = min(cur + timedelta(days=CHUNK_DAYS), chunk_end)
+        chunks.append((cur.strftime("%Y-%m-%d"), nxt.strftime("%Y-%m-%d")))
+        cur = nxt
+
+    log.info("Scraping %d chunks of %d days each", len(chunks), CHUNK_DAYS)
+
+    for i, (c_from, c_to) in enumerate(chunks, 1):
+        log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
+        if HAS_PW:
+            scraper = ClerkScraper(c_from, c_to)
+            recs = await scraper.fetch_all()
+        else:
+            scraper = StaticClerkScraper(c_from, c_to)
+            recs = scraper.fetch_all()
+        log.info("Chunk %d: %d raw records", i, len(recs))
+        all_records.extend(recs)
+
+    records = all_records
     log.info("Raw records fetched: %d", len(records))
 
     # 2. Dedup
@@ -1018,9 +1052,6 @@ async def main():
         if hit and hit.get("prop_address"):
             rec.update({k: v for k, v in hit.items() if v})
             enriched += 1
-            log.info("  HIT: '%s' -> %s", owner[:40], hit["prop_address"])
-        else:
-            log.info("  MISS: '%s'", owner[:60])
         web_lookups += 1
     log.info("Parcel enrichment: %d/%d matched", enriched, len(records))
 
