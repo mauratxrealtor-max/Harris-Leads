@@ -97,15 +97,7 @@ DOC_TYPE_MAP: dict[str, tuple[str, str]] = {
 # Doc types that live on the Foreclosures page instead of RP
 FRCL_TYPES = {"NOFC", "TAXDEED"}
 
-# Only scrape doc types that have confirmed results — skip consistent 0-return types
-# to keep run time under 90 minutes for 90-day lookback.
-# Full list = all keys in DOC_TYPE_MAP
-# Fast list = only types confirmed to return records in Harris County
-_ALL_CODES  = list(DOC_TYPE_MAP.keys())
-_FAST_CODES = ["PRO", "JUD", "LP", "NOFC", "TAXDEED", "LN", "LNMECH", "LNHOA", "LNIRS"]
-
-# Use FAST_CODES unless FULL_SCRAPE env var is set
-TARGET_CODES = _ALL_CODES if os.getenv("FULL_SCRAPE") else _FAST_CODES
+TARGET_CODES = list(DOC_TYPE_MAP.keys())
 
 # ---------------------------------------------------------------------------
 # Helpers
