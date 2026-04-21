@@ -251,6 +251,10 @@
       <option value="">All Records</option>
       <option value="1">Has Address</option>
     </select>
+    <select id="filter-group" onchange="applyFilters()">
+      <option value="">All Filings</option>
+      <option value="1">Group by Owner</option>
+    </select>
     <button class="btn btn-secondary" onclick="clearFilters()">✕ Clear</button>
     <span class="meta" id="filter-count"></span>
   </div>
@@ -335,8 +339,9 @@ function applyFilters() {
   const cat   = document.getElementById('filter-cat').value;
   const minS  = parseInt(document.getElementById('filter-score').value) || 0;
   const addrOnly = document.getElementById('filter-addr').value === '1';
+  const groupOwner = document.getElementById('filter-group').value === '1';
 
-  filtered = ALL_RECORDS.filter(r => {
+  let base = ALL_RECORDS.filter(r => {
     if (minS && r.score < minS) return false;
     if (cat  && r.cat !== cat)  return false;
     if (addrOnly && !r.prop_address) return false;
@@ -347,6 +352,34 @@ function applyFilters() {
     return true;
   });
 
+  // Group by owner — collapse multiple filings per owner into one row
+  if (groupOwner) {
+    const ownerMap = new Map();
+    for (const r of base) {
+      const key = (r.owner || '').toUpperCase().trim();
+      if (!ownerMap.has(key)) {
+        ownerMap.set(key, {...r, _count: 1});
+      } else {
+        const existing = ownerMap.get(key);
+        existing._count++;
+        // Keep highest score
+        if (r.score > existing.score) {
+          ownerMap.set(key, {...r, _count: existing._count});
+        }
+        // Merge flags
+        const merged = [...new Set([...(existing.flags||[]), ...(r.flags||[])])];
+        ownerMap.get(key).flags = merged;
+        // Use address if current doesn't have one
+        if (!existing.prop_address && r.prop_address) {
+          ownerMap.get(key).prop_address = r.prop_address;
+          ownerMap.get(key).mail_address = r.mail_address;
+        }
+      }
+    }
+    base = Array.from(ownerMap.values());
+  }
+
+  filtered = base;
   sortRecords();
   page = 1;
   document.getElementById('filter-count').textContent = `${filtered.length} records`;
@@ -358,6 +391,7 @@ function clearFilters() {
   document.getElementById('filter-cat').value = '';
   document.getElementById('filter-score').value = '';
   document.getElementById('filter-addr').value = '';
+  document.getElementById('filter-group').value = '';
   applyFilters();
 }
 
@@ -418,11 +452,15 @@ function rowHTML(r, idx) {
   const docLink = r.clerk_url
     ? `<a href="${r.clerk_url}" target="_blank" rel="noopener">${r.doc_num || '—'}</a>`
     : (r.doc_num || '<span class="empty">—</span>');
+  const countBadge = r._count > 1
+    ? ` <span style="background:#4f7cff22;color:#4f7cff;border-radius:9px;padding:1px 7px;font-size:11px;margin-left:4px">${r._count} filings</span>`
+    : '';
+  const ownerDisplay = (r.owner || '<span class="empty">—</span>').substring(0, 40) + (r.owner && r.owner.length > 40 ? '...' : '');
   return `<tr onclick="showDetail(${idx})" style="cursor:pointer">
     <td><span class="score ${scoreClass(r.score)}">${r.score}</span></td>
     <td><span class="pill">${r.doc_type}</span></td>
     <td>${r.filed || '<span class="empty">—</span>'}</td>
-    <td title="${r.owner||''}">${r.owner || '<span class="empty">—</span>'}</td>
+    <td title="${r.owner||''}">${ownerDisplay}${countBadge}</td>
     <td title="${r.prop_address||''}">${addr}</td>
     <td title="${r.mail_address||''}">${mail}</td>
     <td>${fmtAmt(r.amount)}</td>
