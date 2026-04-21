@@ -146,10 +146,12 @@ def _extract_address_from_legal(legal: str) -> str:
 
 
 def _deduplicate(records: list[dict]) -> list[dict]:
+    """Deduplicate by doc_num alone — catches cross-chunk duplicates."""
     seen: set[str] = set()
     out: list[dict] = []
     for rec in records:
-        key = f"{rec.get('doc_type','')}:{rec.get('doc_num','')}"
+        doc_num = rec.get("doc_num", "")
+        key = doc_num if doc_num else f"{rec.get('doc_type','')}:{rec.get('owner','')}:{rec.get('filed','')}"
         if key not in seen:
             seen.add(key)
             out.append(rec)
@@ -1017,15 +1019,68 @@ async def main():
     log.info("Portal FRCL: %s", CLERK_FRCL_URL)
     log.info("=" * 60)
 
-    # 1. Clerk scrape — single window
+    # 1. Clerk scrape — chunked (portal rejects ranges > ~30 days)
+    CHUNK_DAYS  = 14
+    CHUNK_DELAY = 45  # seconds between chunks
+
+    chunks = []
+    cur = datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    end = datetime.strptime(date_to,   "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    while cur <= end:
+        nxt = min(cur + timedelta(days=CHUNK_DAYS), end)
+        chunks.append((cur.strftime("%Y-%m-%d"), nxt.strftime("%Y-%m-%d")))
+        cur = nxt + timedelta(days=1)
+
+    log.info("Scraping %d chunks of %d days (delay: %ds each)", len(chunks), CHUNK_DAYS, CHUNK_DELAY)
+
+    all_raw: list[dict] = []
+
     if HAS_PW:
-        scraper = ClerkScraper(date_from, date_to)
-        records = await scraper.fetch_all()
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage"],
+            )
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 900},
+            )
+            page = await context.new_page()
+            page.set_default_timeout(60_000)
+
+            for i, (c_from, c_to) in enumerate(chunks, 1):
+                log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
+                try:
+                    scraper = ClerkScraper(c_from, c_to)
+                    recs = await scraper.fetch_all_on_page(page)
+                    log.info("Chunk %d: %d records (total: %d)", i, len(recs), len(all_raw) + len(recs))
+                    all_raw.extend(recs)
+                except Exception as exc:
+                    log.warning("Chunk %d failed: %s — skipping", i, exc)
+
+                if i < len(chunks):
+                    log.info("Waiting %ds...", CHUNK_DELAY)
+                    try:
+                        await page.goto("about:blank", wait_until="domcontentloaded", timeout=10_000)
+                    except Exception:
+                        pass
+                    await asyncio.sleep(CHUNK_DELAY)
+
+            await browser.close()
     else:
         log.warning("Playwright unavailable - using static scraper.")
-        scraper = StaticClerkScraper(date_from, date_to)
-        records = scraper.fetch_all()
+        import time as _time
+        for i, (c_from, c_to) in enumerate(chunks, 1):
+            log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
+            scraper = StaticClerkScraper(c_from, c_to)
+            recs = scraper.fetch_all()
+            log.info("Chunk %d: %d records", i, len(recs))
+            all_raw.extend(recs)
+            if i < len(chunks):
+                _time.sleep(CHUNK_DELAY)
 
+    records = all_raw
     log.info("Raw records fetched: %d", len(records))
 
     # 2. Dedup
