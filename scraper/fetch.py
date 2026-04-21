@@ -772,7 +772,9 @@ class ClerkScraper:
                 recs = await self._scrape_doc_type(page, doc_code, url)
                 log.info("  %s -> %d records", doc_code, len(recs))
                 all_records.extend(recs)
-                # Human-like delay between doc types (2-5 seconds)
+                # Save partial results after each doc type so data isn't lost on timeout
+                _save_partial(all_records, self.date_from, self.date_to)
+                # Human-like delay between doc types
                 if i < len(TARGET_CODES) - 1:
                     await asyncio.sleep(2 + (i % 3))
 
@@ -978,6 +980,27 @@ def save_output(records: list[dict], date_from: str, date_to: str):
         log.info("Saved: %s (%d records)", dest, len(records))
 
 
+def _save_partial(records: list[dict], date_from: str, date_to: str):
+    """Save partial results mid-run so data isn't lost on timeout."""
+    try:
+        deduped = _deduplicate(list(records))
+        with_addr = sum(1 for r in deduped if r.get("prop_address"))
+        payload = {
+            "fetched_at":   datetime.utcnow().isoformat() + "Z",
+            "source":       "Harris County Clerk (partial)",
+            "date_range":   {"from": date_from, "to": date_to},
+            "total":        len(deduped),
+            "with_address": with_addr,
+            "records":      deduped,
+        }
+        for dest in [DASHBOARD_JSON, DATA_JSON]:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with open(dest, "w", encoding="utf-8") as fh:
+                json.dump(payload, fh, indent=2, default=str)
+    except Exception:
+        pass  # never fail mid-scrape
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -994,53 +1017,15 @@ async def main():
     log.info("Portal FRCL: %s", CLERK_FRCL_URL)
     log.info("=" * 60)
 
-    # 1. Clerk scrape — split into 15-day chunks to avoid portal pagination issues
-    CHUNK_DAYS = 15
-    all_records: list[dict] = []
-    chunk_end   = datetime.now(timezone.utc)
-    chunk_start = chunk_end - timedelta(days=LOOKBACK_DAYS)
-
-    chunks = []
-    cur = chunk_start
-    while cur < chunk_end:
-        nxt = min(cur + timedelta(days=CHUNK_DAYS), chunk_end)
-        chunks.append((cur.strftime("%Y-%m-%d"), nxt.strftime("%Y-%m-%d")))
-        cur = nxt
-
-    log.info("Scraping %d chunks of %d days each", len(chunks), CHUNK_DAYS)
-
+    # 1. Clerk scrape — single window for full date range
     if HAS_PW:
-        # Reuse a single browser across all chunks for speed
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
-            )
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                           "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 900},
-            )
-            page = await context.new_page()
-            page.set_default_timeout(60_000)
-
-            for i, (c_from, c_to) in enumerate(chunks, 1):
-                log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
-                scraper = ClerkScraper(c_from, c_to)
-                recs = await scraper.fetch_all_on_page(page)
-                log.info("Chunk %d: %d records", i, len(recs))
-                all_records.extend(recs)
-
-            await browser.close()
+        scraper = ClerkScraper(date_from, date_to)
+        records = await scraper.fetch_all()
     else:
-        for i, (c_from, c_to) in enumerate(chunks, 1):
-            log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
-            scraper = StaticClerkScraper(c_from, c_to)
-            recs = scraper.fetch_all()
-            log.info("Chunk %d: %d records", i, len(recs))
-            all_records.extend(recs)
+        log.warning("Playwright unavailable - using static scraper.")
+        scraper = StaticClerkScraper(date_from, date_to)
+        records = scraper.fetch_all()
 
-    records = all_records
     log.info("Raw records fetched: %d", len(records))
 
     # 2. Dedup
