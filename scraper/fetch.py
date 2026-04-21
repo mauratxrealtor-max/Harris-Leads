@@ -753,6 +753,17 @@ class ClerkScraper:
                     await asyncio.sleep(3 * attempt)
         return []
 
+    async def fetch_all_on_page(self, page) -> list[dict]:
+        """Scrape all doc types using an existing Playwright page (reuses browser)."""
+        all_records: list[dict] = []
+        for doc_code in TARGET_CODES:
+            url = CLERK_FRCL_URL if doc_code in FRCL_TYPES else CLERK_RP_URL
+            log.info("Fetching %s from %s", doc_code, url)
+            recs = await self._scrape_doc_type(page, doc_code, url)
+            log.info("  %s -> %d records", doc_code, len(recs))
+            all_records.extend(recs)
+        return all_records
+
     async def fetch_all(self) -> list[dict]:
         if not HAS_PW:
             log.error("Playwright not installed.")
@@ -1015,16 +1026,36 @@ async def main():
 
     log.info("Scraping %d chunks of %d days each", len(chunks), CHUNK_DAYS)
 
-    for i, (c_from, c_to) in enumerate(chunks, 1):
-        log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
-        if HAS_PW:
-            scraper = ClerkScraper(c_from, c_to)
-            recs = await scraper.fetch_all()
-        else:
+    if HAS_PW:
+        # Reuse a single browser across all chunks for speed
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage"],
+            )
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 900},
+            )
+            page = await context.new_page()
+            page.set_default_timeout(60_000)
+
+            for i, (c_from, c_to) in enumerate(chunks, 1):
+                log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
+                scraper = ClerkScraper(c_from, c_to)
+                recs = await scraper.fetch_all_on_page(page)
+                log.info("Chunk %d: %d records", i, len(recs))
+                all_records.extend(recs)
+
+            await browser.close()
+    else:
+        for i, (c_from, c_to) in enumerate(chunks, 1):
+            log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
             scraper = StaticClerkScraper(c_from, c_to)
             recs = scraper.fetch_all()
-        log.info("Chunk %d: %d raw records", i, len(recs))
-        all_records.extend(recs)
+            log.info("Chunk %d: %d records", i, len(recs))
+            all_records.extend(recs)
 
     records = all_records
     log.info("Raw records fetched: %d", len(records))
