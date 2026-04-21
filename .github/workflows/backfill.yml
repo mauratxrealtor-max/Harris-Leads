@@ -1,0 +1,118 @@
+name: Historical Backfill (365 Days)
+
+# ONE-TIME USE: Run manually from Actions tab to build full year of leads.
+# Uses a 6-hour timeout to handle the large volume of records (~18,000).
+# After running, the daily scrape.yml will maintain the data going forward.
+
+on:
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: "Number of days to look back (default 365)"
+        required: false
+        default: "365"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "backfill"
+  cancel-in-progress: false
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────
+  backfill:
+    name: Historical Backfill
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360   # 6 hours
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: scraper/requirements.txt
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install requests beautifulsoup4 lxml dbfread playwright
+
+      - name: Install Playwright browsers
+        run: |
+          python -m playwright install --with-deps chromium
+
+      - name: Create output directories
+        run: |
+          mkdir -p dashboard data tmp
+
+      - name: Run historical backfill scraper
+        env:
+          LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '365' }}
+        run: |
+          echo "Running backfill for $LOOKBACK_DAYS days..."
+          python scraper/fetch.py
+        timeout-minutes: 340
+
+      - name: Verify output files exist
+        run: |
+          test -f dashboard/records.json && echo "dashboard/records.json ✓"
+          test -f data/records.json     && echo "data/records.json ✓"
+          echo "Record counts:"
+          python -c "
+          import json
+          with open('dashboard/records.json') as f:
+              d = json.load(f)
+          print(f'  Total: {d[\"total\"]}')
+          print(f'  With address: {d[\"with_address\"]}')
+          print(f'  Date range: {d[\"date_range\"]}')
+          print(f'  Fetched at: {d[\"fetched_at\"]}')
+          "
+
+      - name: Commit and push backfill data
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name  "github-actions[bot]"
+
+          git add dashboard/records.json data/records.json data/ghl_export.csv || true
+          git diff --staged --quiet && echo "No changes to commit." && exit 0
+
+          TOTAL=$(python -c "import json; print(json.load(open('dashboard/records.json'))['total'])")
+          DATE=$(date -u +"%Y-%m-%d")
+          git commit -m "chore: historical backfill ${DATE} (${TOTAL} records, ${{ github.event.inputs.lookback_days || '365' }} days)"
+          git push
+
+  # ──────────────────────────────────────────────────────────────────────
+  deploy-pages:
+    name: Deploy Dashboard to GitHub Pages
+    needs: backfill
+    runs-on: ubuntu-22.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload dashboard artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dashboard/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
