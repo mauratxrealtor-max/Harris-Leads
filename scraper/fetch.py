@@ -163,32 +163,21 @@ def _deduplicate(records: list[dict]) -> list[dict]:
             seen.add(key)
             out.append(rec)
 
-    # Pass 2: collapse same owner+address into one record (keep highest score)
-    # Group by normalised owner name
-    from collections import defaultdict
-    owner_groups: dict[str, list[dict]] = defaultdict(list)
-    for rec in out:
-        owner_key = re.sub(r"\s+", " ", (rec.get("owner") or "").upper().strip())
-        owner_groups[owner_key].append(rec)
-
+    # Pass 2: collapse only when same owner AND same doc_num appears
+    # across different doc_type fetches (true duplicates from overlapping searches)
+    # Do NOT collapse different doc types for the same owner — they're separate filings
+    final_seen: set[str] = set()
     final: list[dict] = []
-    for owner_key, group in owner_groups.items():
-        if len(group) == 1:
-            final.append(group[0])
-        else:
-            # Keep record with highest score; merge flags and doc numbers
-            group.sort(key=lambda r: r.get("score", 0), reverse=True)
-            best = dict(group[0])
-            all_flags = []
-            all_docs = []
-            for r in group:
-                all_flags.extend(r.get("flags", []))
-                all_docs.append(r.get("doc_num", ""))
-            best["flags"] = list(dict.fromkeys(all_flags))
-            best["doc_num"] = ", ".join(d for d in all_docs if d)
-            final.append(best)
+    for rec in out:
+        # Key: owner + doc_num (a specific filing for a specific person)
+        doc_num = rec.get("doc_num", "")
+        owner   = re.sub(r"\s+", " ", (rec.get("owner") or "").upper().strip())
+        key2    = f"{owner}:{doc_num}"
+        if key2 not in final_seen:
+            final_seen.add(key2)
+            final.append(rec)
 
-    log.info("Dedup: %d -> %d (pass1) -> %d (pass2, collapsed same owner)",
+    log.info("Dedup: %d raw -> %d unique doc_nums -> %d final",
              len(records), len(out), len(final))
     return final
 
