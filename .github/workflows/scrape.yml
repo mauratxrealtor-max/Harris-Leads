@@ -49,7 +49,7 @@ jobs:
 
       - name: Run scraper
         env:
-          LOOKBACK_DAYS: "14"
+          LOOKBACK_DAYS: "90"
         run: |
           python scraper/fetch.py
         timeout-minutes: 45
