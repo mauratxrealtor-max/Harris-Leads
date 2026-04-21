@@ -1017,55 +1017,15 @@ async def main():
     log.info("Portal FRCL: %s", CLERK_FRCL_URL)
     log.info("=" * 60)
 
-    # 1. Clerk scrape — portal has a max date range limit (~30 days)
-    # Split into 14-day chunks to stay within portal limits
-    CHUNK_DAYS = 14
-    all_raw: list[dict] = []
-    chunk_end   = datetime.now(timezone.utc)
-    chunk_start = chunk_end - timedelta(days=LOOKBACK_DAYS)
-
-    chunks = []
-    cur = chunk_start
-    while cur < chunk_end:
-        nxt = min(cur + timedelta(days=CHUNK_DAYS), chunk_end)
-        chunks.append((cur.strftime("%Y-%m-%d"), nxt.strftime("%Y-%m-%d")))
-        cur = nxt + timedelta(days=1)  # +1 to avoid boundary overlap
-
-    log.info("Scraping %d chunks of up to %d days each", len(chunks), CHUNK_DAYS)
-
+    # 1. Clerk scrape — single window
     if HAS_PW:
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
-            )
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                           "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 900},
-            )
-            page = await context.new_page()
-            page.set_default_timeout(60_000)
-
-            for i, (c_from, c_to) in enumerate(chunks, 1):
-                log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
-                scraper = ClerkScraper(c_from, c_to)
-                recs = await scraper.fetch_all_on_page(page)
-                log.info("Chunk %d: %d records (running total: %d)", i, len(recs), len(all_raw) + len(recs))
-                all_raw.extend(recs)
-                # Save partial after each chunk so data isn't lost on timeout
-                _save_partial(_deduplicate(list(all_raw)), c_from, date_to)
-
-            await browser.close()
+        scraper = ClerkScraper(date_from, date_to)
+        records = await scraper.fetch_all()
     else:
-        for i, (c_from, c_to) in enumerate(chunks, 1):
-            log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
-            scraper = StaticClerkScraper(c_from, c_to)
-            recs = scraper.fetch_all()
-            log.info("Chunk %d: %d records", i, len(recs))
-            all_raw.extend(recs)
+        log.warning("Playwright unavailable - using static scraper.")
+        scraper = StaticClerkScraper(date_from, date_to)
+        records = scraper.fetch_all()
 
-    records = all_raw
     log.info("Raw records fetched: %d", len(records))
 
     # 2. Dedup
