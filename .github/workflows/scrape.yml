@@ -19,7 +19,7 @@ jobs:
   scrape:
     name: Fetch Leads & Commit Data
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
@@ -52,7 +52,7 @@ jobs:
           LOOKBACK_DAYS: "90"
         run: |
           python scraper/fetch.py
-        timeout-minutes: 45
+        timeout-minutes: 90
 
       - name: Verify output files exist
         run: |
