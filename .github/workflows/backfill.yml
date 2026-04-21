@@ -58,8 +58,8 @@ jobs:
         env:
           LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '365' }}
         run: |
-          echo "Running backfill for $LOOKBACK_DAYS days..."
-          python scraper/fetch.py
+          echo "Running backfill for $LOOKBACK_DAYS days in 14-day chunks..."
+          python scraper/backfill.py
         timeout-minutes: 340
 
       - name: Verify output files exist
