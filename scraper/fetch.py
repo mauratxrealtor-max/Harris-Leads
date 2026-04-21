@@ -709,18 +709,27 @@ class ClerkScraper:
 
     async def _paginate(self, page, doc_code: str) -> list[dict]:
         all_recs: list[dict] = []
+        page_num = 1
         while True:
             recs = await self._parse_rp_page(page, doc_code)
             all_recs.extend(recs)
+            log.info("  %s page %d: %d records (total so far: %d)",
+                     doc_code, page_num, len(recs), len(all_recs))
+
+            # Look for Next page button/link
             next_el = page.locator(
-                'a:has-text("Next"), input[value*="Next"], a[id*="Next"], a[id*="next"]'
+                'a:has-text("Next"), input[value*="Next"], a[id*="Next"], a[id*="next"], '
+                'a:has-text(">"), td a:has-text(">")'
             ).first
             if await next_el.count() == 0:
+                log.info("  %s: no next page found, done at page %d", doc_code, page_num)
                 break
             try:
                 await next_el.click()
                 await page.wait_for_load_state("networkidle", timeout=30_000)
-            except Exception:
+                page_num += 1
+            except Exception as exc:
+                log.warning("  %s: pagination stopped at page %d: %s", doc_code, page_num, exc)
                 break
         return all_recs
 
