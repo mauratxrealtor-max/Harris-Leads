@@ -1093,9 +1093,7 @@ async def main():
     parcel_db.load()
     enriched = 0
     web_lookups = 0
-
-    # Log first 10 owner names so we can see what we're looking up
-    sample_owners = [r.get("owner","") for r in records[:10] if r.get("owner","")]
+    
     log.info("Sample owner names: %s", sample_owners)
 
     for rec in records:
