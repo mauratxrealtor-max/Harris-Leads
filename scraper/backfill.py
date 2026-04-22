@@ -1,11 +1,11 @@
 """
 Harris County Motivated Seller Lead Scraper — Historical Backfill
 Scrapes in 14-day chunks with delays to avoid portal rate-limiting.
-Usage: python scraper/backfill.py [days]
+Saves to dashboard/backfill.json — separate from daily records.json.
+Usage: python scraper/backfill.py
 """
 import asyncio
 import csv
-import gzip
 import json
 import logging
 import os
@@ -19,9 +19,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from fetch import (
     ClerkScraper, StaticClerkScraper, ParcelLookup,
-    _deduplicate, compute_score, save_output, export_ghl_csv,
+    _deduplicate, compute_score, export_ghl_csv,
     HAS_PW, TARGET_CODES, CLERK_FRCL_URL, CLERK_RP_URL,
-    DASHBOARD_JSON, DATA_JSON, GHL_CSV, TMP_DIR,
     log,
 )
 
@@ -30,15 +29,47 @@ try:
 except ImportError:
     pass
 
+# ---------------------------------------------------------------------------
+# Backfill uses its OWN output files — never touches daily records.json
+# ---------------------------------------------------------------------------
+ROOT          = Path(__file__).resolve().parent.parent
+BACKFILL_JSON = ROOT / "dashboard" / "backfill.json"
+BACKFILL_DATA = ROOT / "data"      / "backfill.json"
+BACKFILL_CSV  = ROOT / "data"      / "backfill_ghl_export.csv"
+
 LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "365"))
-CHUNK_DAYS    = 14      # portal max reliable window
-CHUNK_DELAY   = 45      # seconds between chunks to avoid rate-limiting
+CHUNK_DAYS    = 14   # portal max reliable window
+CHUNK_DELAY   = 45   # seconds between chunks to avoid rate-limiting
 
 
+# ---------------------------------------------------------------------------
+# Save backfill output (separate files)
+# ---------------------------------------------------------------------------
+def _save_backfill(records: list[dict], date_from: str, date_to: str):
+    with_addr = sum(1 for r in records if r.get("prop_address"))
+    payload = {
+        "fetched_at":   datetime.utcnow().isoformat() + "Z",
+        "source":       "Harris County Clerk (backfill)",
+        "date_range":   {"from": date_from, "to": date_to},
+        "total":        len(records),
+        "with_address": with_addr,
+        "records":      records,
+    }
+    for dest in [BACKFILL_JSON, BACKFILL_DATA]:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with open(dest, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2, default=str)
+        log.info("Saved: %s (%d records)", dest, len(records))
+    export_ghl_csv(records, BACKFILL_CSV)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 async def main():
-    now         = datetime.now(timezone.utc)
-    date_to     = now.strftime("%Y-%m-%d")
-    date_from   = (now - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
+    now       = datetime.now(timezone.utc)
+    date_to   = now.strftime("%Y-%m-%d")
+    date_from = (now - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
 
     log.info("=" * 60)
     log.info("Harris County Backfill Scraper")
@@ -46,11 +77,11 @@ async def main():
     log.info("Chunk size : %d days, delay: %ds", CHUNK_DAYS, CHUNK_DELAY)
     log.info("=" * 60)
 
-    # Build chunks
+    # Build non-overlapping 14-day chunks
     chunks = []
     cur = datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    end = now
-    while cur < end:
+    end = datetime.strptime(date_to,   "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    while cur <= end:
         nxt = min(cur + timedelta(days=CHUNK_DAYS), end)
         chunks.append((cur.strftime("%Y-%m-%d"), nxt.strftime("%Y-%m-%d")))
         cur = nxt + timedelta(days=1)
@@ -85,16 +116,8 @@ async def main():
                 except Exception as exc:
                     log.warning("Chunk %d failed: %s — skipping", i, exc)
 
-                # Save partial results after every chunk
-                if all_raw:
-                    deduped = _deduplicate(list(all_raw))
-                    _save_partial(deduped, date_from, date_to)
-                    log.info("Partial save: %d unique records so far", len(deduped))
-
-                # Delay between chunks (except after last)
                 if i < len(chunks):
                     log.info("Waiting %ds before next chunk...", CHUNK_DELAY)
-                    # Navigate away to reset portal session
                     try:
                         await page.goto("about:blank", wait_until="domcontentloaded", timeout=10_000)
                     except Exception:
@@ -140,33 +163,13 @@ async def main():
         rec["flags"] = flags
     records.sort(key=lambda r: r.get("score", 0), reverse=True)
 
-    # Save
-    save_output(records, date_from, date_to)
-    export_ghl_csv(records, GHL_CSV)
+    # Save to backfill files only — never touches records.json
+    _save_backfill(records, date_from, date_to)
 
     log.info("=" * 60)
     log.info("DONE — %d total leads", len(records))
     log.info("=" * 60)
     return 0
-
-
-def _save_partial(records, date_from, date_to):
-    try:
-        with_addr = sum(1 for r in records if r.get("prop_address"))
-        payload = {
-            "fetched_at":   datetime.utcnow().isoformat() + "Z",
-            "source":       "Harris County Clerk (backfill partial)",
-            "date_range":   {"from": date_from, "to": date_to},
-            "total":        len(records),
-            "with_address": with_addr,
-            "records":      records,
-        }
-        for dest in [DASHBOARD_JSON, DATA_JSON]:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            with open(dest, "w", encoding="utf-8") as fh:
-                json.dump(payload, fh, indent=2, default=str)
-    except Exception:
-        pass
 
 
 if __name__ == "__main__":
