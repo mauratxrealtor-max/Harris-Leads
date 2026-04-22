@@ -1093,8 +1093,6 @@ async def main():
     parcel_db.load()
     enriched = 0
     web_lookups = 0
-    
-    log.info("Sample owner names: %s", sample_owners)
 
     for rec in records:
         owner = rec.get("owner", "")
