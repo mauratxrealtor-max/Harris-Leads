@@ -82,10 +82,10 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name  "github-actions[bot]"
 
-          git add dashboard/records.json data/records.json data/ghl_export.csv || true
+          git add dashboard/backfill.json data/backfill.json data/backfill_ghl_export.csv || true
           git diff --staged --quiet && echo "No changes to commit." && exit 0
 
-          TOTAL=$(python -c "import json; print(json.load(open('dashboard/records.json'))['total'])")
+          TOTAL=$(python -c "import json; print(json.load(open('dashboard/backfill.json'))['total'])")
           DATE=$(date -u +"%Y-%m-%d")
           git commit -m "chore: historical backfill ${DATE} (${TOTAL} records, ${{ github.event.inputs.lookback_days || '365' }} days)"
           git push
