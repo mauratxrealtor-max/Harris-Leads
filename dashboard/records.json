@@ -1,11 +1,11 @@
 {
-  "fetched_at": "2026-04-24T11:13:31.998654Z",
+  "fetched_at": "2026-04-24T14:23:12.457678Z",
   "source": "Harris County Clerk",
   "date_range": {
     "from": "2026-01-24",
     "to": "2026-04-24"
   },
-  "total": 463,
+  "total": 464,
   "with_address": 354,
   "records": [
     {
@@ -11286,6 +11286,31 @@
       "mail_state": "",
       "mail_zip": "",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-112397",
+      "flags": [
+        "Probate / estate",
+        "New this week"
+      ],
+      "score": 55
+    },
+    {
+      "doc_num": "RP-2026-153958",
+      "doc_type": "PRO",
+      "filed": "2026-04-23",
+      "cat": "probate",
+      "cat_label": "Probate Document",
+      "owner": "HARWELL VIRGINIA A EST",
+      "grantee": "SEE INSTRUMENT; SEE INSTRUMENT                     Comment: SEE INSTRUMENT",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "",
+      "prop_city": "Houston",
+      "prop_state": "TX",
+      "prop_zip": "",
+      "mail_address": "",
+      "mail_city": "",
+      "mail_state": "",
+      "mail_zip": "",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-153958",
       "flags": [
         "Probate / estate",
         "New this week"
