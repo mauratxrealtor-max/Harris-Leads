@@ -76,27 +76,26 @@ TMP_DIR        = ROOT / "tmp"
 
 # Doc-type map  ->  (category, human label)
 DOC_TYPE_MAP: dict[str, tuple[str, str]] = {
-    "LP":       ("lp",      "Lis Pendens"),
-    "NOFC":     ("nofc",    "Notice of Foreclosure"),
-    "TAXDEED":  ("taxdeed", "Tax Deed"),
-    "JUD":      ("jud",     "Judgment"),
-    "CCJ":      ("jud",     "Certified Judgment"),
-    "DRJUD":    ("jud",     "Domestic Judgment"),
-    "LNCORPTX": ("lien",    "Corp Tax Lien"),
-    "LNIRS":    ("lien",    "IRS Lien"),
-    "LNFED":    ("lien",    "Federal Lien"),
-    "LN":       ("lien",    "Lien"),
-    "LNMECH":   ("lien",    "Mechanic Lien"),
-    "LNHOA":    ("lien",    "HOA Lien"),
-    "MEDLN":    ("lien",    "Medicaid Lien"),
-    "PRO":      ("probate", "Probate Document"),
-    "NOC":      ("noc",     "Notice of Commencement"),
-    "RELLP":    ("rellp",   "Release Lis Pendens"),
+    "L/P":    ("lp",      "Lis Pendens"),
+    "JUDGE":  ("jud",     "Judgment"),
+    "A/J":    ("jud",     "Abstract of Judgment"),
+    "LIEN":   ("lien",    "Lien"),
+    "T/L":    ("lien",    "Tax Lien"),
+    "PROB":   ("probate", "Probate Document"),
+    "REL":    ("rellp",   "Release"),
+    "NOTICE": ("noc",     "Notice"),
+    "DECREE": ("jud",     "Divorce Decree"),
+    "BNKRCY": ("lp",      "Bankruptcy"),
 }
 
-# Doc types that live on the Foreclosures page instead of RP
-FRCL_TYPES = {"NOFC", "TAXDEED"}
-
+# All doc types use RP.aspx — FRCL page has different form structure
+FRCL_TYPES: set[str] = set()
+    
+   
+    
+   
+   
+   
 TARGET_CODES = list(DOC_TYPE_MAP.keys())
 
 # ---------------------------------------------------------------------------
