@@ -796,23 +796,40 @@ class ClerkScraper:
         html = await page.content()
         soup = BeautifulSoup(html, "lxml")
 
-        # Locate the results table
+        # Log all tables for debugging so we can see what's available
+        all_tables = soup.find_all("table")
+        for ti, tbl in enumerate(all_tables):
+            rows_i = tbl.find_all("tr")
+            preview = tbl.get_text(" ", strip=True)[:120].replace("\n", " ")
+            log.info("  FRCL table[%d]: %d rows | %s", ti, len(rows_i), preview)
+
+        # Locate the results table — try progressively looser criteria
         result_table = None
-        for tbl in soup.find_all("table"):
-            txt = tbl.get_text(" ", strip=True)
-            if "File Number" in txt and "File Date" in txt:
+
+        # 1. Prefer a table whose header row contains date + name-like columns
+        HEADER_KEYWORDS = (
+            "file number", "filed date", "file date", "instrument",
+            "grantor", "grantee", "nofc", "taxdeed", "foreclos",
+        )
+        for tbl in all_tables:
+            header_rows = tbl.find_all("tr", limit=3)
+            header_txt  = " ".join(r.get_text(" ", strip=True) for r in header_rows).lower()
+            if sum(1 for kw in HEADER_KEYWORDS if kw in header_txt) >= 2:
                 result_table = tbl
+                log.info("  FRCL: matched result table by header keywords")
                 break
+
+        # 2. Fall back: table with the most <tr> rows (layout tables have very few)
         if not result_table:
-            for tbl in soup.find_all("table"):
-                txt = tbl.get_text(" ", strip=True)
-                if any(k in txt for k in ("Grantor", "NOFC", "TAXDEED", "Instrument")):
-                    result_table = tbl
-                    break
+            candidate = max(all_tables, key=lambda t: len(t.find_all("tr")), default=None)
+            if candidate and len(candidate.find_all("tr")) > 1:
+                result_table = candidate
+                log.info("  FRCL: using table with most rows (%d) as fallback",
+                         len(result_table.find_all("tr")))
 
         if not result_table:
             log.warning("  FRCL: no result table for %04d-%02d (%d tables)",
-                        year, month, len(soup.find_all("table")))
+                        year, month, len(all_tables))
             return records
 
         rows = result_table.find_all("tr")
