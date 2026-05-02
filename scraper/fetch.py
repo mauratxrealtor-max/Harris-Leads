@@ -790,81 +790,43 @@ class ClerkScraper:
     async def _parse_frcl_page(self, page, year: int, month: int) -> list[dict]:
         """
         Parse one page of FRCL_R.aspx results.
-        Detects NOFC vs TAXDEED from row text; filters to self.date_from..self.date_to.
+
+        Confirmed column layout (live portal):
+          col 0 — Doc ID   (e.g. FRCL-2026-612)
+          col 1 — Sale Date (MM/DD/YYYY)
+          col 2 — File Date (MM/DD/YYYY)
+          col 3 — Pgs
+
+        Table index 1 is always the data table on this page.
+        No owner/grantor columns exist; those fields are left blank.
+        Records are filtered to self.date_from..self.date_to by file date.
         """
         records: list[dict] = []
         html = await page.content()
         soup = BeautifulSoup(html, "lxml")
 
-        # Log all tables for debugging so we can see what's available
         all_tables = soup.find_all("table")
-        for ti, tbl in enumerate(all_tables):
-            rows_i = tbl.find_all("tr")
-            preview = tbl.get_text(" ", strip=True)[:120].replace("\n", " ")
-            log.info("  FRCL table[%d]: %d rows | %s", ti, len(rows_i), preview)
+        log.info("  FRCL %04d-%02d: %d tables on page", year, month, len(all_tables))
 
-        # Locate the results table — try progressively looser criteria
-        result_table = None
-
-        # 1. Prefer a table whose header row contains date + name-like columns
-        HEADER_KEYWORDS = (
-            "file number", "filed date", "file date", "instrument",
-            "grantor", "grantee", "nofc", "taxdeed", "foreclos",
-        )
-        for tbl in all_tables:
-            header_rows = tbl.find_all("tr", limit=3)
-            header_txt  = " ".join(r.get_text(" ", strip=True) for r in header_rows).lower()
-            if sum(1 for kw in HEADER_KEYWORDS if kw in header_txt) >= 2:
-                result_table = tbl
-                log.info("  FRCL: matched result table by header keywords")
-                break
-
-        # 2. Fall back: table with the most <tr> rows (layout tables have very few)
-        if not result_table:
-            candidate = max(all_tables, key=lambda t: len(t.find_all("tr")), default=None)
-            if candidate and len(candidate.find_all("tr")) > 1:
-                result_table = candidate
-                log.info("  FRCL: using table with most rows (%d) as fallback",
-                         len(result_table.find_all("tr")))
-
-        if not result_table:
-            log.warning("  FRCL: no result table for %04d-%02d (%d tables)",
-                        year, month, len(all_tables))
+        if len(all_tables) < 2:
+            log.warning("  FRCL: expected table[1] but only %d tables found", len(all_tables))
             return records
 
+        result_table = all_tables[1]
         rows = result_table.find_all("tr")
-        log.info("  FRCL table %04d-%02d: %d rows", year, month, len(rows))
-        if len(rows) > 1:
-            first_cells = rows[1].find_all(["td", "th"])
-            log.info("  FRCL first row: %s",
-                     " | ".join(c.get_text(" ", strip=True)[:25] for c in first_cells[:8]))
+        log.info("  FRCL table[1] %04d-%02d: %d rows", year, month, len(rows))
 
-        # Group multi-row records by doc number (same strategy as RP parser)
-        current: dict | None = None
-        grouped: list[dict] = []
-        for row in rows[1:]:
-            cells = row.find_all(["td", "th"])
-            if not cells:
-                continue
-            row_text  = " ".join(c.get_text(" ", strip=True) for c in cells)
-            doc_match  = re.search(r'\b([A-Z]{1,4}-\d{4}-\d{4,8})\b', row_text)
-            date_match = re.search(r'\b(\d{2}/\d{2}/\d{4})\b', row_text)
-            if doc_match and date_match:
-                if current:
-                    grouped.append(current)
-                current = {
-                    "doc_num": doc_match.group(1),
-                    "filed":   _parse_date(date_match.group(1)),
-                    "text":    row_text,
-                    "hrefs":   [a.get("href", "") for a in row.find_all("a", href=True)],
-                }
-            elif current:
-                current["text"]  += " " + row_text
-                current["hrefs"] += [a.get("href", "") for a in row.find_all("a", href=True)]
-        if current:
-            grouped.append(current)
+        if len(rows) < 2:
+            log.info("  FRCL: no data rows for %04d-%02d", year, month)
+            return records
 
-        log.info("  FRCL grouped %d records for %04d-%02d", len(grouped), year, month)
+        # Log header + first data row for future debugging
+        header_cells = rows[0].find_all(["td", "th"])
+        log.info("  FRCL headers: %s",
+                 " | ".join(c.get_text(" ", strip=True) for c in header_cells))
+        first_cells = rows[1].find_all(["td", "th"])
+        log.info("  FRCL row[1]:  %s",
+                 " | ".join(c.get_text(" ", strip=True)[:30] for c in first_cells))
 
         try:
             dt_from = datetime.strptime(self.date_from, "%Y-%m-%d")
@@ -872,63 +834,54 @@ class ClerkScraper:
         except Exception:
             dt_from = dt_to = None
 
-        for raw in grouped:
+        for row in rows[1:]:
+            cells = row.find_all(["td", "th"])
+            if len(cells) < 3:
+                continue
             try:
-                # Filter to requested date window
-                if dt_from and dt_to and raw["filed"]:
+                doc_num   = cells[0].get_text(" ", strip=True)
+                sale_date = cells[1].get_text(" ", strip=True)
+                file_date = cells[2].get_text(" ", strip=True)
+
+                # Skip header-repeat rows
+                if not re.search(r'[A-Z]{2,}-\d{4}-\d+', doc_num):
+                    continue
+
+                filed = _parse_date(file_date) or _parse_date(sale_date)
+
+                # Filter to requested date window by file date
+                if dt_from and dt_to and filed:
                     try:
-                        filed_dt = datetime.strptime(raw["filed"][:10], "%Y-%m-%d")
+                        filed_dt = datetime.strptime(filed[:10], "%Y-%m-%d")
                         if filed_dt < dt_from or filed_dt > dt_to:
                             continue
                     except Exception:
                         pass
 
-                full = raw["text"]
-                doc_code = "TAXDEED" if re.search(r'\bTAX\s*DEED\b', full, re.I) else "NOFC"
+                # FRCL page doesn't distinguish NOFC vs TAXDEED in these columns;
+                # default to NOFC (Notice of Foreclosure) — the dominant type here.
+                doc_code = "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
 
-                grantors = []
-                for m in re.finditer(
-                    r'Grantor\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*\|\s*\w|\s*$))',
-                    full
-                ):
-                    name = m.group(1).strip().strip("|").strip()
-                    if name and len(name) > 1 and name not in grantors:
-                        grantors.append(name)
-
-                grantees = []
-                for m in re.finditer(
-                    r'Grantee\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*\|\s*\w|\s*$))',
-                    full
-                ):
-                    name = m.group(1).strip().strip("|").strip()
-                    if name and len(name) > 1 and name not in grantees:
-                        grantees.append(name)
-
-                legal_text = ""
-                for key in ("Desc:", "Comment:", "Lot:", "Block:", "Abstract:", "Sec:"):
-                    m = re.search(key + r'\s*(.{3,80}?)(?=\s*(?:Desc:|Comment:|Lot:|Block:|$))', full)
-                    if m:
-                        legal_text = key + " " + m.group(1).strip()
-                        break
-
-                clerk_url = f"{CLERK_FRCL_URL}?FileNo={raw['doc_num']}"
-                for href in raw["hrefs"]:
-                    if href and "javascript" not in href.lower() and "EComm" not in href and len(href) > 5:
+                # Clerk URL — link on doc_num cell if present, else build search URL
+                clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
+                link = cells[0].find("a", href=True)
+                if link:
+                    href = link["href"]
+                    if href and "javascript" not in href.lower():
                         clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
-                        break
 
                 records.append({
-                    "doc_num":      raw["doc_num"],
+                    "doc_num":      doc_num,
                     "doc_type":     doc_code,
-                    "filed":        raw["filed"],
+                    "filed":        filed,
                     "cat":          cat,
                     "cat_label":    cat_label,
-                    "owner":        "; ".join(grantors),
-                    "grantee":      "; ".join(grantees),
+                    "owner":        "",
+                    "grantee":      "",
                     "amount":       None,
-                    "legal":        legal_text,
-                    "prop_address": _extract_address_from_legal(legal_text),
+                    "legal":        "",
+                    "prop_address": "",
                     "prop_city":    "Houston",
                     "prop_state":   "TX",
                     "prop_zip":     "",
@@ -943,6 +896,7 @@ class ClerkScraper:
             except Exception as exc:
                 log.debug("FRCL record build error: %s", exc)
 
+        log.info("  FRCL %04d-%02d: %d records after date filter", year, month, len(records))
         return records
 
     async def _paginate_frcl(self, page, year: int, month: int) -> list[dict]:
