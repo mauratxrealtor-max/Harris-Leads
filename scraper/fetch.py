@@ -752,62 +752,38 @@ class ClerkScraper:
 
     async def _fill_frcl_form(self, page, year: int, month: int):
         """Select ddlYear / ddlMonth on FRCL_R.aspx and submit."""
-        try:
-            await page.wait_for_selector(
-                'select[id*="ddlYear"], select[id*="Year"]',
-                state="attached", timeout=15_000,
-            )
-        except Exception:
-            log.warning("  FRCL year dropdown not ready — proceeding")
+        await page.wait_for_selector(
+            "#ctl00_ContentPlaceHolder1_ddlYear",
+            state="attached", timeout=15_000,
+        )
 
         await self._dump_inputs(page)
 
-        # Year dropdown
-        year_set = False
-        for sel in ['select[id*="ddlYear"]', 'select[id*="Year"]', "#ddlYear"]:
+        # Year dropdown — exact ID confirmed from live portal
+        for val in (str(year), f"{year:04d}"):
             try:
-                if await page.locator(sel).count():
-                    await page.select_option(sel, str(year))
-                    log.info("  FRCL ddlYear = %d (%s)", year, sel)
-                    year_set = True
-                    break
+                await page.select_option("#ctl00_ContentPlaceHolder1_ddlYear", val)
+                log.info("  FRCL ddlYear = %s", val)
+                break
             except Exception as exc:
-                log.debug("  ddlYear %s: %s", sel, exc)
-        if not year_set:
+                log.debug("  ddlYear val=%s: %s", val, exc)
+        else:
             log.warning("  FRCL: could not set year dropdown to %d", year)
 
         # Month dropdown — try "1"–"12" and zero-padded "01"–"12"
-        month_set = False
-        for sel in ['select[id*="ddlMonth"]', 'select[id*="Month"]', "#ddlMonth"]:
-            for val in (str(month), f"{month:02d}"):
-                try:
-                    if await page.locator(sel).count():
-                        await page.select_option(sel, val)
-                        log.info("  FRCL ddlMonth = %s (%s)", val, sel)
-                        month_set = True
-                        break
-                except Exception as exc:
-                    log.debug("  ddlMonth %s val=%s: %s", sel, val, exc)
-            if month_set:
+        for val in (str(month), f"{month:02d}"):
+            try:
+                await page.select_option("#ctl00_ContentPlaceHolder1_ddlMonth", val)
+                log.info("  FRCL ddlMonth = %s", val)
                 break
-        if not month_set:
+            except Exception as exc:
+                log.debug("  ddlMonth val=%s: %s", val, exc)
+        else:
             log.warning("  FRCL: could not set month dropdown to %d", month)
 
-        # Search button
-        for sel in [
-            "#ctl00_ContentPlaceHolder1_btnSearch",
-            'input[id*="btnSearch"]',
-            'input[value="Search"]',
-            'button:has-text("Search")',
-            'input[type="submit"]',
-        ]:
-            el = page.locator(sel).first
-            if await el.count():
-                log.info("  FRCL Search btn: %s", await el.get_attribute("id") or sel)
-                await el.click()
-                break
-        else:
-            log.warning("  FRCL: Search button not found!")
+        # Search button — exact ID confirmed from live portal
+        await page.click("#ctl00_ContentPlaceHolder1_btnSearch")
+        log.info("  FRCL Search btn clicked")
 
         await page.wait_for_load_state("networkidle", timeout=45_000)
 
