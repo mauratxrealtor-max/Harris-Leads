@@ -79,6 +79,7 @@ jobs:
           TOTAL=$(python -c "import json; print(json.load(open('dashboard/records.json'))['total'])")
           DATE=$(date -u +"%Y-%m-%d")
           git commit -m "chore: update leads ${DATE} (${TOTAL} records)"
+          git pull --rebase origin main
           git push
 
   # ──────────────────────────────────────────────────────────────────────
