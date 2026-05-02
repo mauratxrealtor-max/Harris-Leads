@@ -86,17 +86,14 @@ DOC_TYPE_MAP: dict[str, tuple[str, str]] = {
     "NOTICE": ("noc",     "Notice"),
     "DECREE": ("jud",     "Divorce Decree"),
     "BNKRCY": ("lp",      "Bankruptcy"),
+    "NOFC":   ("foreclosure", "Notice of Foreclosure"),
+    "TAXDEED":("foreclosure", "Tax Deed"),
 }
 
-# All doc types use RP.aspx — FRCL page has different form structure
-FRCL_TYPES: set[str] = set()
-    
-   
-    
-   
-   
-   
-TARGET_CODES = list(DOC_TYPE_MAP.keys())
+# NOFC and TAXDEED come from FRCL_R.aspx (year/month dropdowns), not RP.aspx
+FRCL_TYPES: set[str] = {"NOFC", "TAXDEED"}
+
+TARGET_CODES = [c for c in DOC_TYPE_MAP.keys() if c not in FRCL_TYPES]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -737,6 +734,277 @@ class ClerkScraper:
                     await asyncio.sleep(3 * attempt)
         return []
 
+    # ------------------------------------------------------------------
+    # FRCL_R.aspx — year/month dropdown form
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _months_in_range(date_from: str, date_to: str) -> list[tuple[int, int]]:
+        """Return (year, month) tuples that overlap the given date range."""
+        start = datetime.strptime(date_from, "%Y-%m-%d").replace(day=1)
+        end   = datetime.strptime(date_to,   "%Y-%m-%d")
+        months: list[tuple[int, int]] = []
+        cur = start
+        while cur <= end:
+            months.append((cur.year, cur.month))
+            cur = cur.replace(month=cur.month + 1) if cur.month < 12 else cur.replace(year=cur.year + 1, month=1)
+        return months
+
+    async def _fill_frcl_form(self, page, year: int, month: int):
+        """Select ddlYear / ddlMonth on FRCL_R.aspx and submit."""
+        try:
+            await page.wait_for_selector(
+                'select[id*="ddlYear"], select[id*="Year"]',
+                state="attached", timeout=15_000,
+            )
+        except Exception:
+            log.warning("  FRCL year dropdown not ready — proceeding")
+
+        await self._dump_inputs(page)
+
+        # Year dropdown
+        year_set = False
+        for sel in ['select[id*="ddlYear"]', 'select[id*="Year"]', "#ddlYear"]:
+            try:
+                if await page.locator(sel).count():
+                    await page.select_option(sel, str(year))
+                    log.info("  FRCL ddlYear = %d (%s)", year, sel)
+                    year_set = True
+                    break
+            except Exception as exc:
+                log.debug("  ddlYear %s: %s", sel, exc)
+        if not year_set:
+            log.warning("  FRCL: could not set year dropdown to %d", year)
+
+        # Month dropdown — try "1"–"12" and zero-padded "01"–"12"
+        month_set = False
+        for sel in ['select[id*="ddlMonth"]', 'select[id*="Month"]', "#ddlMonth"]:
+            for val in (str(month), f"{month:02d}"):
+                try:
+                    if await page.locator(sel).count():
+                        await page.select_option(sel, val)
+                        log.info("  FRCL ddlMonth = %s (%s)", val, sel)
+                        month_set = True
+                        break
+                except Exception as exc:
+                    log.debug("  ddlMonth %s val=%s: %s", sel, val, exc)
+            if month_set:
+                break
+        if not month_set:
+            log.warning("  FRCL: could not set month dropdown to %d", month)
+
+        # Search button
+        for sel in [
+            "#ctl00_ContentPlaceHolder1_btnSearch",
+            'input[id*="btnSearch"]',
+            'input[value="Search"]',
+            'button:has-text("Search")',
+            'input[type="submit"]',
+        ]:
+            el = page.locator(sel).first
+            if await el.count():
+                log.info("  FRCL Search btn: %s", await el.get_attribute("id") or sel)
+                await el.click()
+                break
+        else:
+            log.warning("  FRCL: Search button not found!")
+
+        await page.wait_for_load_state("networkidle", timeout=45_000)
+
+    async def _parse_frcl_page(self, page, year: int, month: int) -> list[dict]:
+        """
+        Parse one page of FRCL_R.aspx results.
+        Detects NOFC vs TAXDEED from row text; filters to self.date_from..self.date_to.
+        """
+        records: list[dict] = []
+        html = await page.content()
+        soup = BeautifulSoup(html, "lxml")
+
+        # Locate the results table
+        result_table = None
+        for tbl in soup.find_all("table"):
+            txt = tbl.get_text(" ", strip=True)
+            if "File Number" in txt and "File Date" in txt:
+                result_table = tbl
+                break
+        if not result_table:
+            for tbl in soup.find_all("table"):
+                txt = tbl.get_text(" ", strip=True)
+                if any(k in txt for k in ("Grantor", "NOFC", "TAXDEED", "Instrument")):
+                    result_table = tbl
+                    break
+
+        if not result_table:
+            log.warning("  FRCL: no result table for %04d-%02d (%d tables)",
+                        year, month, len(soup.find_all("table")))
+            return records
+
+        rows = result_table.find_all("tr")
+        log.info("  FRCL table %04d-%02d: %d rows", year, month, len(rows))
+        if len(rows) > 1:
+            first_cells = rows[1].find_all(["td", "th"])
+            log.info("  FRCL first row: %s",
+                     " | ".join(c.get_text(" ", strip=True)[:25] for c in first_cells[:8]))
+
+        # Group multi-row records by doc number (same strategy as RP parser)
+        current: dict | None = None
+        grouped: list[dict] = []
+        for row in rows[1:]:
+            cells = row.find_all(["td", "th"])
+            if not cells:
+                continue
+            row_text  = " ".join(c.get_text(" ", strip=True) for c in cells)
+            doc_match  = re.search(r'\b([A-Z]{1,4}-\d{4}-\d{4,8})\b', row_text)
+            date_match = re.search(r'\b(\d{2}/\d{2}/\d{4})\b', row_text)
+            if doc_match and date_match:
+                if current:
+                    grouped.append(current)
+                current = {
+                    "doc_num": doc_match.group(1),
+                    "filed":   _parse_date(date_match.group(1)),
+                    "text":    row_text,
+                    "hrefs":   [a.get("href", "") for a in row.find_all("a", href=True)],
+                }
+            elif current:
+                current["text"]  += " " + row_text
+                current["hrefs"] += [a.get("href", "") for a in row.find_all("a", href=True)]
+        if current:
+            grouped.append(current)
+
+        log.info("  FRCL grouped %d records for %04d-%02d", len(grouped), year, month)
+
+        try:
+            dt_from = datetime.strptime(self.date_from, "%Y-%m-%d")
+            dt_to   = datetime.strptime(self.date_to,   "%Y-%m-%d")
+        except Exception:
+            dt_from = dt_to = None
+
+        for raw in grouped:
+            try:
+                # Filter to requested date window
+                if dt_from and dt_to and raw["filed"]:
+                    try:
+                        filed_dt = datetime.strptime(raw["filed"][:10], "%Y-%m-%d")
+                        if filed_dt < dt_from or filed_dt > dt_to:
+                            continue
+                    except Exception:
+                        pass
+
+                full = raw["text"]
+                doc_code = "TAXDEED" if re.search(r'\bTAX\s*DEED\b', full, re.I) else "NOFC"
+                cat, cat_label = DOC_TYPE_MAP[doc_code]
+
+                grantors = []
+                for m in re.finditer(
+                    r'Grantor\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*\|\s*\w|\s*$))',
+                    full
+                ):
+                    name = m.group(1).strip().strip("|").strip()
+                    if name and len(name) > 1 and name not in grantors:
+                        grantors.append(name)
+
+                grantees = []
+                for m in re.finditer(
+                    r'Grantee\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*\|\s*\w|\s*$))',
+                    full
+                ):
+                    name = m.group(1).strip().strip("|").strip()
+                    if name and len(name) > 1 and name not in grantees:
+                        grantees.append(name)
+
+                legal_text = ""
+                for key in ("Desc:", "Comment:", "Lot:", "Block:", "Abstract:", "Sec:"):
+                    m = re.search(key + r'\s*(.{3,80}?)(?=\s*(?:Desc:|Comment:|Lot:|Block:|$))', full)
+                    if m:
+                        legal_text = key + " " + m.group(1).strip()
+                        break
+
+                clerk_url = f"{CLERK_FRCL_URL}?FileNo={raw['doc_num']}"
+                for href in raw["hrefs"]:
+                    if href and "javascript" not in href.lower() and "EComm" not in href and len(href) > 5:
+                        clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
+                        break
+
+                records.append({
+                    "doc_num":      raw["doc_num"],
+                    "doc_type":     doc_code,
+                    "filed":        raw["filed"],
+                    "cat":          cat,
+                    "cat_label":    cat_label,
+                    "owner":        "; ".join(grantors),
+                    "grantee":      "; ".join(grantees),
+                    "amount":       None,
+                    "legal":        legal_text,
+                    "prop_address": _extract_address_from_legal(legal_text),
+                    "prop_city":    "Houston",
+                    "prop_state":   "TX",
+                    "prop_zip":     "",
+                    "mail_address": "",
+                    "mail_city":    "",
+                    "mail_state":   "",
+                    "mail_zip":     "",
+                    "clerk_url":    clerk_url,
+                    "flags":        [],
+                    "score":        0,
+                })
+            except Exception as exc:
+                log.debug("FRCL record build error: %s", exc)
+
+        return records
+
+    async def _paginate_frcl(self, page, year: int, month: int) -> list[dict]:
+        all_recs: list[dict] = []
+        page_num = 1
+        while True:
+            recs = await self._parse_frcl_page(page, year, month)
+            all_recs.extend(recs)
+            log.info("  FRCL %04d-%02d page %d: %d records", year, month, page_num, len(recs))
+            next_el = page.locator(
+                'a:has-text("Next"), input[value*="Next"], a[id*="Next"], '
+                'a[id*="next"], a:has-text(">"), td a:has-text(">")'
+            ).first
+            if await next_el.count() == 0:
+                break
+            try:
+                await next_el.click()
+                await page.wait_for_load_state("networkidle", timeout=30_000)
+                page_num += 1
+            except Exception as exc:
+                log.warning("  FRCL pagination stopped at page %d: %s", page_num, exc)
+                break
+        return all_recs
+
+    async def _scrape_frcl_month(self, page, year: int, month: int) -> list[dict]:
+        """Navigate to FRCL_R.aspx, select year/month, return all matching records."""
+        for attempt in range(1, 4):
+            try:
+                await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=60_000)
+                await page.wait_for_load_state("networkidle", timeout=30_000)
+                await asyncio.sleep(2)
+                await self._fill_frcl_form(page, year, month)
+                return await self._paginate_frcl(page, year, month)
+            except Exception as exc:
+                log.warning("FRCL %04d-%02d attempt %d: %s", year, month, attempt, exc)
+                if attempt < 3:
+                    await asyncio.sleep(3 * attempt)
+        return []
+
+    async def fetch_frcl_on_page(self, page) -> list[dict]:
+        """Scrape NOFC and TAXDEED from FRCL_R.aspx for every month in the date range."""
+        months = self._months_in_range(self.date_from, self.date_to)
+        log.info("FRCL scraping %d month(s): %s",
+                 len(months), ", ".join(f"{y}-{m:02d}" for y, m in months))
+        all_records: list[dict] = []
+        for i, (year, month) in enumerate(months):
+            recs = await self._scrape_frcl_month(page, year, month)
+            log.info("  FRCL %04d-%02d -> %d records", year, month, len(recs))
+            all_records.extend(recs)
+            if i < len(months) - 1:
+                await asyncio.sleep(2)
+        return all_records
+
+    # ------------------------------------------------------------------
+
     async def fetch_all_on_page(self, page) -> list[dict]:
         """Scrape all doc types using an existing Playwright page (reuses browser)."""
         all_records: list[dict] = []
@@ -1065,6 +1333,17 @@ async def main():
                     except Exception:
                         pass
                     await asyncio.sleep(CHUNK_DELAY)
+
+            # FRCL scraping — NOFC and TAXDEED via year/month dropdowns
+            log.info("--- FRCL scraping: NOFC and TAXDEED ---")
+            try:
+                frcl_scraper = ClerkScraper(date_from, date_to)
+                frcl_recs = await frcl_scraper.fetch_frcl_on_page(page)
+                log.info("FRCL total: %d records", len(frcl_recs))
+                all_raw.extend(frcl_recs)
+                _save_partial(all_raw, date_from, date_to)
+            except Exception as exc:
+                log.warning("FRCL scrape failed: %s", exc)
 
             await browser.close()
     else:
