@@ -1086,6 +1086,17 @@ async def main():
             page = await context.new_page()
             page.set_default_timeout(60_000)
 
+            # FRCL first — guarantees NOFC/TAXDEED are captured even if RP times out
+            log.info("--- FRCL scraping: NOFC and TAXDEED ---")
+            try:
+                frcl_scraper = ClerkScraper(date_from, date_to)
+                frcl_recs = await frcl_scraper.fetch_frcl_on_page(page)
+                log.info("FRCL total: %d records", len(frcl_recs))
+                all_raw.extend(frcl_recs)
+                _save_partial(all_raw, date_from, date_to)
+            except Exception as exc:
+                log.warning("FRCL scrape failed: %s", exc)
+
             for i, (c_from, c_to) in enumerate(chunks, 1):
                 log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
                 try:
@@ -1093,6 +1104,7 @@ async def main():
                     recs = await scraper.fetch_all_on_page(page)
                     log.info("Chunk %d: %d records (total: %d)", i, len(recs), len(all_raw) + len(recs))
                     all_raw.extend(recs)
+                    _save_partial(all_raw, date_from, date_to)
                 except Exception as exc:
                     log.warning("Chunk %d failed: %s — skipping", i, exc)
 
@@ -1103,17 +1115,6 @@ async def main():
                     except Exception:
                         pass
                     await asyncio.sleep(CHUNK_DELAY)
-
-            # FRCL scraping — NOFC and TAXDEED
-            log.info("--- FRCL scraping: NOFC and TAXDEED ---")
-            try:
-                frcl_scraper = ClerkScraper(date_from, date_to)
-                frcl_recs = await frcl_scraper.fetch_frcl_on_page(page)
-                log.info("FRCL total: %d records", len(frcl_recs))
-                all_raw.extend(frcl_recs)
-                _save_partial(all_raw, date_from, date_to)
-            except Exception as exc:
-                log.warning("FRCL scrape failed: %s", exc)
 
             await browser.close()
     else:
