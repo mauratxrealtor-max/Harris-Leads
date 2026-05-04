@@ -691,27 +691,36 @@ class ClerkScraper:
         await page.wait_for_load_state("networkidle", timeout=45_000)
 
     async def _parse_frcl_page(self, page, year: int, month: int) -> list[dict]:
+        """
+        Parse FRCL_R.aspx results.
+        Confirmed column structure: Doc ID | Sale Date | File Date | Pgs
+        Doc IDs look like FRCL-2025-7269.
+        Results load via JS — must wait for them to appear.
+        """
         records: list[dict] = []
 
-        # Wait for results to load — look for a cell containing a FRCL doc number
+        # Wait for JS to render results
         try:
             await page.wait_for_selector(
                 'td:has-text("FRCL-")',
-                timeout=15_000
+                timeout=20_000
             )
+            log.info("  FRCL %04d-%02d: results loaded", year, month)
         except Exception:
-            log.warning("  FRCL %04d-%02d: no FRCL- doc numbers appeared after 15s", year, month)
+            log.warning("  FRCL %04d-%02d: no FRCL- results after 20s — page may be empty", year, month)
             return records
 
         html = await page.content()
         soup = BeautifulSoup(html, "lxml")
+
         all_tables = soup.find_all("table")
         log.info("  FRCL %04d-%02d: %d tables on page", year, month, len(all_tables))
 
-        # Find the data table containing FRCL doc numbers
+        # Find the table containing FRCL doc numbers
         result_table = None
         for tbl in all_tables:
-            if re.search(r'FRCL-\d{4}-\d+', tbl.get_text(" ", strip=True)):
+            tbl_text = tbl.get_text(" ", strip=True)
+            if re.search(r'FRCL-\d{4}-\d+', tbl_text):
                 result_table = tbl
                 break
 
@@ -723,6 +732,7 @@ class ClerkScraper:
         log.info("  FRCL table %04d-%02d: %d rows", year, month, len(rows))
 
         if len(rows) < 2:
+            log.info("  FRCL: no data rows for %04d-%02d", year, month)
             return records
 
         header_cells = rows[0].find_all(["td", "th"])
@@ -743,15 +753,18 @@ class ClerkScraper:
             if len(cells) < 3:
                 continue
             try:
-                doc_num   = cells[0].get_text(" ", strip=True)
-                sale_date = cells[1].get_text(" ", strip=True)
-                file_date = cells[2].get_text(" ", strip=True) if len(cells) > 2 else ""
+                # Confirmed: Col 0=Doc ID, Col 1=Sale Date, Col 2=File Date
+                doc_num   = cells[0].get_text(" ", strip=True).strip()
+                sale_date = cells[1].get_text(" ", strip=True).strip()
+                file_date = cells[2].get_text(" ", strip=True).strip()
 
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
                     continue
 
+                # Use file date first, fall back to sale date
                 filed = _parse_date(file_date) or _parse_date(sale_date)
 
+                # Filter to requested date window by file date
                 if dt_from and dt_to and filed:
                     try:
                         filed_dt = datetime.strptime(filed[:10], "%Y-%m-%d")
@@ -760,105 +773,7 @@ class ClerkScraper:
                     except Exception:
                         pass
 
-                row_text = " ".join(c.get_text(" ", strip=True) for c in cells)
-                doc_code = "TAXDEED" if re.search(r'\bTAX\b|\bTAXDEED\b', row_text, re.I) else "NOFC"
-                cat, cat_label = DOC_TYPE_MAP[doc_code]
-
-                clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
-                link = cells[0].find("a", href=True)
-                if link:
-                    href = link["href"]
-                    if href and "javascript" not in href.lower():
-                        clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
-
-                records.append({
-                    "doc_num": doc_num, "doc_type": doc_code,
-                    "filed": filed, "cat": cat, "cat_label": cat_label,
-                    "owner": "", "grantee": "", "amount": None, "legal": "",
-                    "prop_address": "", "prop_city": "Houston",
-                    "prop_state": "TX", "prop_zip": "",
-                    "mail_address": "", "mail_city": "",
-                    "mail_state": "", "mail_zip": "",
-                    "clerk_url": clerk_url, "flags": [], "score": 0,
-                })
-            except Exception as exc:
-                log.debug("FRCL record build error: %s", exc)
-
-        log.info("  FRCL %04d-%02d: %d records after date filter", year, month, len(records))
-        return records
-        """
-        Parse FRCL_R.aspx results.
-        The data table contains FRCL-YYYY-NNNN doc numbers.
-        We find it by searching for that pattern rather than using a fixed index.
-        """
-        records: list[dict] = []
-        html = await page.content()
-        soup = BeautifulSoup(html, "lxml")
-
-        all_tables = soup.find_all("table")
-        log.info("  FRCL %04d-%02d: %d tables on page", year, month, len(all_tables))
-
-        # Find the data table by looking for FRCL doc number pattern
-        result_table = None
-        for tbl in all_tables:
-            tbl_text = tbl.get_text(" ", strip=True)
-            if re.search(r'[A-Z]{2,}-\d{4}-\d+', tbl_text):
-                result_table = tbl
-                break
-
-        if not result_table:
-            log.warning("  FRCL: no data table found for %04d-%02d (no doc numbers found)", year, month)
-            return records
-
-        rows = result_table.find_all("tr")
-        log.info("  FRCL table %04d-%02d: %d rows", year, month, len(rows))
-
-        if len(rows) < 2:
-            log.info("  FRCL: no data rows for %04d-%02d", year, month)
-            return records
-
-        # Log header + first data row for debugging
-        header_cells = rows[0].find_all(["td", "th"])
-        log.info("  FRCL headers: %s",
-                 " | ".join(c.get_text(" ", strip=True) for c in header_cells))
-        first_cells = rows[1].find_all(["td", "th"])
-        log.info("  FRCL row[1]:  %s",
-                 " | ".join(c.get_text(" ", strip=True)[:30] for c in first_cells))
-
-        try:
-            dt_from = datetime.strptime(self.date_from, "%Y-%m-%d")
-            dt_to   = datetime.strptime(self.date_to,   "%Y-%m-%d")
-        except Exception:
-            dt_from = dt_to = None
-
-        for row in rows[1:]:
-            cells = row.find_all(["td", "th"])
-            if len(cells) < 3:
-                continue
-            try:
-                doc_num   = cells[0].get_text(" ", strip=True)
-                sale_date = cells[1].get_text(" ", strip=True)
-                file_date = cells[2].get_text(" ", strip=True) if len(cells) > 2 else ""
-
-                # Skip non-doc rows
-                if not re.search(r'[A-Z]{2,}-\d{4}-\d+', doc_num):
-                    continue
-
-                filed = _parse_date(file_date) or _parse_date(sale_date)
-
-                # Filter to requested date window
-                if dt_from and dt_to and filed:
-                    try:
-                        filed_dt = datetime.strptime(filed[:10], "%Y-%m-%d")
-                        if filed_dt < dt_from or filed_dt > dt_to:
-                            continue
-                    except Exception:
-                        pass
-
-                # Determine doc type — FRCL page shows both NOFC and TAXDEED
-                # Look for "TAX" in surrounding text to identify tax deeds
-                row_text = " ".join(c.get_text(" ", strip=True) for c in cells)
-                doc_code = "TAXDEED" if re.search(r'\bTAX\b|\bTAXDEED\b', row_text, re.I) else "NOFC"
+                doc_code = "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
 
                 clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
