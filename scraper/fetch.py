@@ -730,7 +730,7 @@ class ClerkScraper:
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
                     continue
 
-                filed = _parse_date(file_date) or _parse_date(sale_date)
+                filed = _parse_date(sale_date) or _parse_date(file_date)
 
                 if dt_from and dt_to and filed:
                     try:
