@@ -692,54 +692,24 @@ class ClerkScraper:
 
     async def _parse_frcl_page(self, page, year: int, month: int) -> list[dict]:
         """
-        Parse FRCL_R.aspx results.
+        Parse FRCL_R.aspx results using Playwright directly.
         Confirmed column structure: Doc ID | Sale Date | File Date | Pgs
         Doc IDs look like FRCL-2025-7269.
-        Results load via JS — must wait for them to appear.
+        Uses Playwright row locator to bypass BeautifulSoup table selection issues.
         """
         records: list[dict] = []
 
-        # Wait for JS to render results
+        # Use Playwright to find all rows containing FRCL- doc numbers
         try:
-            all_text = await page.inner_text("body")
-        except Exception:
-            all_text = ""
-        if "FRCL-" not in all_text:
-            log.warning("  FRCL %04d-%02d: no FRCL- found in page", year, month)
-            return records
-        log.info("  FRCL %04d-%02d: FRCL- found, parsing...", year, month)
-
-        html = await page.content()
-        soup = BeautifulSoup(html, "lxml")
-
-        all_tables = soup.find_all("table")
-        log.info("  FRCL %04d-%02d: %d tables on page", year, month, len(all_tables))
-
-        # Find the table containing FRCL doc numbers
-        result_table = None
-        for tbl in all_tables:
-            tbl_text = tbl.get_text(" ", strip=True)
-            if re.search(r'FRCL-\d{4}-\d+', tbl_text):
-                result_table = tbl
-                break
-
-        if not result_table:
-            log.warning("  FRCL: no data table found for %04d-%02d", year, month)
+            frcl_rows = await page.locator('tr:has(td:has-text("FRCL-"))').all()
+        except Exception as exc:
+            log.warning("  FRCL %04d-%02d: row locator failed: %s", year, month, exc)
             return records
 
-        rows = result_table.find_all("tr")
-        log.info("  FRCL table %04d-%02d: %d rows", year, month, len(rows))
-
-        if len(rows) < 2:
-            log.info("  FRCL: no data rows for %04d-%02d", year, month)
+        log.info("  FRCL %04d-%02d: %d data rows found", year, month, len(frcl_rows))
+        if not frcl_rows:
+            log.warning("  FRCL %04d-%02d: no FRCL- rows found", year, month)
             return records
-
-        header_cells = rows[0].find_all(["td", "th"])
-        log.info("  FRCL headers: %s",
-                 " | ".join(c.get_text(" ", strip=True) for c in header_cells))
-        first_cells = rows[1].find_all(["td", "th"])
-        log.info("  FRCL row[1]:  %s",
-                 " | ".join(c.get_text(" ", strip=True)[:30] for c in first_cells))
 
         try:
             dt_from = datetime.strptime(self.date_from, "%Y-%m-%d")
@@ -747,23 +717,21 @@ class ClerkScraper:
         except Exception:
             dt_from = dt_to = None
 
-        for row in rows[1:]:
-            cells = row.find_all(["td", "th"])
-            if len(cells) < 3:
-                continue
+        for frcl_row in frcl_rows:
             try:
-                # Confirmed: Col 0=Doc ID, Col 1=Sale Date, Col 2=File Date
-                doc_num   = cells[0].get_text(" ", strip=True).strip()
-                sale_date = cells[1].get_text(" ", strip=True).strip()
-                file_date = cells[2].get_text(" ", strip=True).strip()
+                cells_text = await frcl_row.locator("td").all_text_contents()
+                if len(cells_text) < 3:
+                    continue
+
+                doc_num   = cells_text[0].strip()
+                sale_date = cells_text[1].strip()
+                file_date = cells_text[2].strip()
 
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
                     continue
 
-                # Use file date first, fall back to sale date
                 filed = _parse_date(file_date) or _parse_date(sale_date)
 
-                # Filter to requested date window by file date
                 if dt_from and dt_to and filed:
                     try:
                         filed_dt = datetime.strptime(filed[:10], "%Y-%m-%d")
@@ -774,13 +742,7 @@ class ClerkScraper:
 
                 doc_code = "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
-
                 clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
-                link = cells[0].find("a", href=True)
-                if link:
-                    href = link["href"]
-                    if href and "javascript" not in href.lower():
-                        clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
 
                 records.append({
                     "doc_num":      doc_num,
@@ -839,7 +801,6 @@ class ClerkScraper:
                 await page.wait_for_load_state("networkidle", timeout=30_000)
                 await asyncio.sleep(2)
                 await self._fill_frcl_form(page, year, month)
-                await asyncio.sleep(5)
                 return await self._paginate_frcl(page, year, month)
             except Exception as exc:
                 log.warning("FRCL %04d-%02d attempt %d: %s", year, month, attempt, exc)
