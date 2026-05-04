@@ -701,14 +701,13 @@ class ClerkScraper:
 
         # Wait for JS to render results
         try:
-            await page.wait_for_selector(
-                'td:has-text("FRCL-")',
-                timeout=20_000
-            )
-            log.info("  FRCL %04d-%02d: results loaded", year, month)
+            all_text = await page.inner_text("body")
         except Exception:
-            log.warning("  FRCL %04d-%02d: no FRCL- results after 20s — page may be empty", year, month)
+            all_text = ""
+        if "FRCL-" not in all_text:
+            log.warning("  FRCL %04d-%02d: no FRCL- found in page", year, month)
             return records
+        log.info("  FRCL %04d-%02d: FRCL- found, parsing...", year, month)
 
         html = await page.content()
         soup = BeautifulSoup(html, "lxml")
@@ -840,6 +839,7 @@ class ClerkScraper:
                 await page.wait_for_load_state("networkidle", timeout=30_000)
                 await asyncio.sleep(2)
                 await self._fill_frcl_form(page, year, month)
+                await asyncio.sleep(5)
                 return await self._paginate_frcl(page, year, month)
             except Exception as exc:
                 log.warning("FRCL %04d-%02d attempt %d: %s", year, month, attempt, exc)
