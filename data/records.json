@@ -1,5 +1,5 @@
 {
-  "fetched_at": "2026-05-04T15:23:05.559744Z",
+  "fetched_at": "2026-05-04T15:49:42.521920Z",
   "source": "Harris County Clerk",
   "date_range": {
     "from": "2026-04-20",
@@ -7341,6 +7341,32 @@
       "score": 70
     },
     {
+      "doc_num": "RP-2026-170609",
+      "doc_type": "REL",
+      "filed": "2026-05-04",
+      "cat": "rellp",
+      "cat_label": "Release",
+      "owner": "SALUDA GRADE MORTGAGE FUNDING LLC",
+      "grantee": "BIEDRONKA INTERNATIONAL INVESTMENTS LLC; SOFLO PROPERTIES LLC",
+      "amount": null,
+      "legal": "Desc: OAK FOREST ADDITION Sec: 6",
+      "prop_address": "2422 CHAPIS ST",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77093",
+      "mail_address": "425 S FINANCIAL PL STE 2000",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77014-",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-170609",
+      "flags": [
+        "Lis pendens",
+        "LLC / corp owner",
+        "New this week"
+      ],
+      "score": 70
+    },
+    {
       "doc_num": "RP-2026-170599",
       "doc_type": "REL",
       "filed": "2026-05-04",
@@ -12117,6 +12143,32 @@
       "mail_state": "TX",
       "mail_zip": "77027-2803",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-168788",
+      "flags": [
+        "Lis pendens",
+        "LLC / corp owner",
+        "New this week"
+      ],
+      "score": 70
+    },
+    {
+      "doc_num": "RP-2026-168689",
+      "doc_type": "REL",
+      "filed": "2026-05-01",
+      "cat": "rellp",
+      "cat_label": "Release",
+      "owner": "FIRST CALL SECURITY LLC; LAW OFFICES OF HOWARD L. STOMEL; SPARTAN; STOMEL HOWARD L",
+      "grantee": "IMPERIAL POINT CIVIC CLUB HOA; IMPERIAL POINT COMMUNITY IMPROVEMENT ASSOCIATION",
+      "amount": null,
+      "legal": "Comment: SEE INSTRUMENT",
+      "prop_address": "9035 JOHNS RD",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77049",
+      "mail_address": "433 N LOOP W STE 260",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77008-2029",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-168689",
       "flags": [
         "Lis pendens",
         "LLC / corp owner",
@@ -23245,84 +23297,6 @@
       "mail_state": "UT",
       "mail_zip": "84165-0250",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-164949",
-      "flags": [
-        "Lis pendens",
-        "LLC / corp owner",
-        "New this week"
-      ],
-      "score": 70
-    },
-    {
-      "doc_num": "RP-2026-164944",
-      "doc_type": "REL",
-      "filed": "2026-04-29",
-      "cat": "rellp",
-      "cat_label": "Release",
-      "owner": "COMMUNITY ASSOCIATION OF THE PRESERVE INC; FARINE TRISHA TAYLOR",
-      "grantee": "GLASSMAN JAMES; GLASSMAN STEPHANIE HENDRIX",
-      "amount": null,
-      "legal": "Desc: PRESERVE AT KLUGE",
-      "prop_address": "34 WILLOWCREEK RANCH RD",
-      "prop_city": "TOMBALL",
-      "prop_state": "TX",
-      "prop_zip": "77377",
-      "mail_address": "7904 N SAM HOUSTON PARKWAY WEST",
-      "mail_city": "HOUSTON",
-      "mail_state": "TX",
-      "mail_zip": "77064",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-164944",
-      "flags": [
-        "Lis pendens",
-        "LLC / corp owner",
-        "New this week"
-      ],
-      "score": 70
-    },
-    {
-      "doc_num": "RP-2026-164940",
-      "doc_type": "REL",
-      "filed": "2026-04-29",
-      "cat": "rellp",
-      "cat_label": "Release",
-      "owner": "FREEDOM MORTGAGE CORPORATION; MORTGAGE ELECTRONIC REGISTRATION SYSTEMS INC",
-      "grantee": "STRICKLAND JACKIE; STRICKLAND SHANNON",
-      "amount": null,
-      "legal": "Comment: SEE INSTRUMENT Related Docs",
-      "prop_address": "300 ST JOSEPH PKY 101",
-      "prop_city": "HOUSTON",
-      "prop_state": "TX",
-      "prop_zip": "77002",
-      "mail_address": "11988 EXIT 5 PKWY BLDG 4",
-      "mail_city": "FISHERS",
-      "mail_state": "IN",
-      "mail_zip": "46037-8022",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-164940",
-      "flags": [
-        "Lis pendens",
-        "LLC / corp owner",
-        "New this week"
-      ],
-      "score": 70
-    },
-    {
-      "doc_num": "RP-2026-164939",
-      "doc_type": "REL",
-      "filed": "2026-04-29",
-      "cat": "rellp",
-      "cat_label": "Release",
-      "owner": "BEAR STEARNS ASSET BACKED SECURITIES I TRUST 2006-HE6; LASALLE BANK NATIONAL ASSOCITATION; U S BANK NATIONAL ASSOCIATION; U S BANK TRUST COMPANY",
-      "grantee": "RILES DONALD W; RILES DONALD W                     Comment: SEE INSTRUMENT",
-      "amount": null,
-      "legal": "Comment: SEE INSTRUMENT Related Docs",
-      "prop_address": "701 SAN JACINTO ST",
-      "prop_city": "HOUSTON",
-      "prop_state": "TX",
-      "prop_zip": "77002",
-      "mail_address": "475 LENFANT PLZ SW",
-      "mail_city": "WASHINGTON",
-      "mail_state": "DC",
-      "mail_zip": "20260-0004",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-164939",
       "flags": [
         "Lis pendens",
         "LLC / corp owner",
@@ -46215,6 +46189,31 @@
       "score": 60
     },
     {
+      "doc_num": "RP-2026-170605",
+      "doc_type": "REL",
+      "filed": "2026-05-04",
+      "cat": "rellp",
+      "cat_label": "Release",
+      "owner": "MADDEN DOUGLAS M; MADDEN PATRICIA A",
+      "grantee": "MADDEN BRIAN A; MADDEN STACIE N",
+      "amount": null,
+      "legal": "Desc: COUNTRY LAKE ESTATES Sec: 1",
+      "prop_address": "171 STONEY CREEK DR",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77024",
+      "mail_address": "171 STONEY CREEK DR",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77024-6239",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-170605",
+      "flags": [
+        "Lis pendens",
+        "New this week"
+      ],
+      "score": 60
+    },
+    {
       "doc_num": "RP-2026-170563",
       "doc_type": "REL",
       "filed": "2026-05-01",
@@ -48458,6 +48457,31 @@
       "mail_state": "IN",
       "mail_zip": "46037-8022",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-168486",
+      "flags": [
+        "Lis pendens",
+        "New this week"
+      ],
+      "score": 60
+    },
+    {
+      "doc_num": "RP-2026-168473",
+      "doc_type": "REL",
+      "filed": "2026-05-01",
+      "cat": "rellp",
+      "cat_label": "Release",
+      "owner": "GUEST LESLIE RENE; PARKER WALTER J; SCHEINTHAL ALAN R",
+      "grantee": "CARL RAY MARBURGER TRUST; MARBURGER CARL R; MARBURGER GREGORY GLEN; MARBURGER VIC; MARBURGER VIC Desc: FOREST COVE Sec: 3 Lot: 1 Block: 12",
+      "amount": null,
+      "legal": "Desc: FOREST COVE Sec: 3",
+      "prop_address": "17306 CASCADE CIR",
+      "prop_city": "HOUSTON",
+      "prop_state": "TX",
+      "prop_zip": "77095",
+      "mail_address": "17306 CASCADE CIR",
+      "mail_city": "HOUSTON",
+      "mail_state": "TX",
+      "mail_zip": "77095-4266",
+      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-168473",
       "flags": [
         "Lis pendens",
         "New this week"
@@ -53408,31 +53432,6 @@
       "mail_state": "TX",
       "mail_zip": "77040-6301",
       "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-164976",
-      "flags": [
-        "Lis pendens",
-        "New this week"
-      ],
-      "score": 60
-    },
-    {
-      "doc_num": "RP-2026-164943",
-      "doc_type": "REL",
-      "filed": "2026-04-29",
-      "cat": "rellp",
-      "cat_label": "Release",
-      "owner": "BANK OF TEXAS; BOKF NA",
-      "grantee": "DOMINO DONALD J JR; DOMINO JESSICA C; DOMINO JESSICA C                     Comment: SEE INSTRUMENT",
-      "amount": null,
-      "legal": "Comment: SEE INSTRUMENT Related Docs",
-      "prop_address": "701 TOWN AND COUNTRY WAY",
-      "prop_city": "HOUSTON",
-      "prop_state": "TX",
-      "prop_zip": "77024",
-      "mail_address": "PO BOX 32547",
-      "mail_city": "CHARLOTTE",
-      "mail_state": "NC",
-      "mail_zip": "28232-2547",
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/RP.aspx?FileNo=RP-2026-164943",
       "flags": [
         "Lis pendens",
         "New this week"
