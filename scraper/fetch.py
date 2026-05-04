@@ -711,9 +711,15 @@ class ClerkScraper:
             log.warning("  FRCL %04d-%02d: no FRCL- rows found", year, month)
             return records
 
-        for frcl_row in frcl_rows:
+        for row_idx, frcl_row in enumerate(frcl_rows):
             try:
                 cells_text = await frcl_row.locator("td").all_text_contents()
+
+                if row_idx < 3:
+                    log.info("  FRCL row[%d] cells(%d): %s",
+                             row_idx, len(cells_text),
+                             " | ".join(repr(c) for c in cells_text))
+
                 if len(cells_text) < 3:
                     continue
 
@@ -722,6 +728,8 @@ class ClerkScraper:
                 file_date = cells_text[2].strip()
 
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
+                    if row_idx < 3:
+                        log.info("  FRCL row[%d] doc_num %r did not match FRCL-YYYY-N pattern", row_idx, doc_num)
                     continue
 
                 # Use sale date as filed date (more relevant for motivated sellers)
