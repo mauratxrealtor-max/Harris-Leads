@@ -691,6 +691,101 @@ class ClerkScraper:
         await page.wait_for_load_state("networkidle", timeout=45_000)
 
     async def _parse_frcl_page(self, page, year: int, month: int) -> list[dict]:
+        records: list[dict] = []
+
+        # Wait for results to load — look for a cell containing a FRCL doc number
+        try:
+            await page.wait_for_selector(
+                'td:has-text("FRCL-")',
+                timeout=15_000
+            )
+        except Exception:
+            log.warning("  FRCL %04d-%02d: no FRCL- doc numbers appeared after 15s", year, month)
+            return records
+
+        html = await page.content()
+        soup = BeautifulSoup(html, "lxml")
+        all_tables = soup.find_all("table")
+        log.info("  FRCL %04d-%02d: %d tables on page", year, month, len(all_tables))
+
+        # Find the data table containing FRCL doc numbers
+        result_table = None
+        for tbl in all_tables:
+            if re.search(r'FRCL-\d{4}-\d+', tbl.get_text(" ", strip=True)):
+                result_table = tbl
+                break
+
+        if not result_table:
+            log.warning("  FRCL: no data table found for %04d-%02d", year, month)
+            return records
+
+        rows = result_table.find_all("tr")
+        log.info("  FRCL table %04d-%02d: %d rows", year, month, len(rows))
+
+        if len(rows) < 2:
+            return records
+
+        header_cells = rows[0].find_all(["td", "th"])
+        log.info("  FRCL headers: %s",
+                 " | ".join(c.get_text(" ", strip=True) for c in header_cells))
+        first_cells = rows[1].find_all(["td", "th"])
+        log.info("  FRCL row[1]:  %s",
+                 " | ".join(c.get_text(" ", strip=True)[:30] for c in first_cells))
+
+        try:
+            dt_from = datetime.strptime(self.date_from, "%Y-%m-%d")
+            dt_to   = datetime.strptime(self.date_to,   "%Y-%m-%d")
+        except Exception:
+            dt_from = dt_to = None
+
+        for row in rows[1:]:
+            cells = row.find_all(["td", "th"])
+            if len(cells) < 3:
+                continue
+            try:
+                doc_num   = cells[0].get_text(" ", strip=True)
+                sale_date = cells[1].get_text(" ", strip=True)
+                file_date = cells[2].get_text(" ", strip=True) if len(cells) > 2 else ""
+
+                if not re.search(r'FRCL-\d{4}-\d+', doc_num):
+                    continue
+
+                filed = _parse_date(file_date) or _parse_date(sale_date)
+
+                if dt_from and dt_to and filed:
+                    try:
+                        filed_dt = datetime.strptime(filed[:10], "%Y-%m-%d")
+                        if filed_dt < dt_from or filed_dt > dt_to:
+                            continue
+                    except Exception:
+                        pass
+
+                row_text = " ".join(c.get_text(" ", strip=True) for c in cells)
+                doc_code = "TAXDEED" if re.search(r'\bTAX\b|\bTAXDEED\b', row_text, re.I) else "NOFC"
+                cat, cat_label = DOC_TYPE_MAP[doc_code]
+
+                clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
+                link = cells[0].find("a", href=True)
+                if link:
+                    href = link["href"]
+                    if href and "javascript" not in href.lower():
+                        clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
+
+                records.append({
+                    "doc_num": doc_num, "doc_type": doc_code,
+                    "filed": filed, "cat": cat, "cat_label": cat_label,
+                    "owner": "", "grantee": "", "amount": None, "legal": "",
+                    "prop_address": "", "prop_city": "Houston",
+                    "prop_state": "TX", "prop_zip": "",
+                    "mail_address": "", "mail_city": "",
+                    "mail_state": "", "mail_zip": "",
+                    "clerk_url": clerk_url, "flags": [], "score": 0,
+                })
+            except Exception as exc:
+                log.debug("FRCL record build error: %s", exc)
+
+        log.info("  FRCL %04d-%02d: %d records after date filter", year, month, len(records))
+        return records
         """
         Parse FRCL_R.aspx results.
         The data table contains FRCL-YYYY-NNNN doc numbers.
