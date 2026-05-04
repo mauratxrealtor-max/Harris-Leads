@@ -732,13 +732,6 @@ class ClerkScraper:
 
                 filed = _parse_date(sale_date) or _parse_date(file_date)
 
-                if dt_from and dt_to and filed:
-                    try:
-                        filed_dt = datetime.strptime(filed[:10], "%Y-%m-%d")
-                        if filed_dt < dt_from or filed_dt > dt_to:
-                            continue
-                    except Exception:
-                        pass
 
                 doc_code = "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
