@@ -76,16 +76,16 @@ TMP_DIR        = ROOT / "tmp"
 
 # Doc-type map  ->  (category, human label)
 DOC_TYPE_MAP: dict[str, tuple[str, str]] = {
-    "L/P":    ("lp",      "Lis Pendens"),
-    "JUDGE":  ("jud",     "Judgment"),
-    "A/J":    ("jud",     "Abstract of Judgment"),
-    "LIEN":   ("lien",    "Lien"),
-    "T/L":    ("lien",    "Tax Lien"),
-    "PROB":   ("probate", "Probate Document"),
-    "REL":    ("rellp",   "Release"),
-    "NOTICE": ("noc",     "Notice"),
-    "DECREE": ("jud",     "Divorce Decree"),
-    "BNKRCY": ("lp",      "Bankruptcy"),
+    "L/P":    ("lp",          "Lis Pendens"),
+    "JUDGE":  ("jud",         "Judgment"),
+    "A/J":    ("jud",         "Abstract of Judgment"),
+    "LIEN":   ("lien",        "Lien"),
+    "T/L":    ("lien",        "Tax Lien"),
+    "PROB":   ("probate",     "Probate Document"),
+    "REL":    ("rellp",       "Release"),
+    "NOTICE": ("noc",         "Notice"),
+    "DECREE": ("jud",         "Divorce Decree"),
+    "BNKRCY": ("lp",          "Bankruptcy"),
     "NOFC":   ("foreclosure", "Notice of Foreclosure"),
     "TAXDEED":("foreclosure", "Tax Deed"),
 }
@@ -126,10 +126,6 @@ def _parse_amount(raw: str) -> float | None:
 
 
 def _extract_address_from_legal(legal: str) -> str:
-    """
-    Try to extract a street address from a Harris County legal description.
-    Examples: '1234 MAIN ST', '5678 W BELLFORT AVE UNIT 2'
-    """
     if not legal:
         return ""
     m = re.search(
@@ -168,24 +164,26 @@ def compute_score(rec: dict) -> tuple[int, list[str]]:
     owner     = rec.get("owner", "") or ""
     prop_addr = rec.get("prop_address", "") or ""
 
-    if doc_type in ("LP", "RELLP"):
+    if doc_type in ("L/P", "REL"):
         flags.append("Lis pendens")
     if doc_type in ("NOFC", "TAXDEED"):
         flags.append("Pre-foreclosure")
     if cat == "jud":
         flags.append("Judgment lien")
-    if doc_type in ("LNCORPTX", "LNIRS", "LNFED", "TAXDEED"):
+    if doc_type in ("T/L", "TAXDEED"):
         flags.append("Tax lien")
-    if doc_type == "LNMECH":
+    if doc_type == "LIEN":
         flags.append("Mechanic lien")
     if cat == "probate":
         flags.append("Probate / estate")
+    if doc_type == "BNKRCY":
+        flags.append("Bankruptcy")
     if re.search(r"\b(LLC|INC|CORP|LTD|LP|LLP|PLLC|TRUST)\b", owner, re.I):
         flags.append("LLC / corp owner")
 
     try:
         filed_dt = datetime.strptime(filed_str[:10], "%Y-%m-%d")
-        if (datetime.utcnow() - filed_dt).days <= LOOKBACK_DAYS:
+        if (datetime.utcnow() - filed_dt).days <= 14:
             flags.append("New this week")
     except Exception:
         pass
@@ -218,24 +216,15 @@ def compute_score(rec: dict) -> tuple[int, list[str]]:
 # HCAD Parcel Lookup
 # ---------------------------------------------------------------------------
 class ParcelLookup:
-    """
-    Looks up property/mailing addresses from a pre-built HCAD lookup CSV.
-    The CSV is built from Real_acct_owner.zip → real_acct.txt.
-    Columns: owner, site_addr, site_city, site_zip,
-             mail_addr, mail_city, mail_state, mail_zip
-    File location: data/hcad_lookup.csv.gz (committed to repo, ~32MB)
-    """
-
     def __init__(self):
         self._idx: dict[str, dict] = {}
-        self._prefix_idx: dict[str, dict] = {}  # 2-word prefix -> first matching parcel
+        self._prefix_idx: dict[str, dict] = {}
         self._loaded = False
 
     def _normalise(self, name: str) -> str:
         return re.sub(r"\s+", " ", name.upper().strip())
 
     def load(self):
-        """Load the pre-built HCAD lookup CSV from the data/ directory."""
         single = ROOT / "data" / "hcad_lookup.csv.gz"
         parts  = [ROOT / "data" / f"hcad_lookup_part{i}.csv.gz" for i in range(1, 4)]
 
@@ -246,7 +235,7 @@ class ParcelLookup:
             files_to_load = [p for p in parts if p.exists() and p.stat().st_size > 1000]
 
         if not files_to_load:
-            log.warning("No hcad_lookup*.csv.gz files found in data/ — address enrichment disabled.")
+            log.warning("No hcad_lookup*.csv.gz files found — address enrichment disabled.")
             return
 
         import gzip as gz
@@ -272,7 +261,6 @@ class ParcelLookup:
                         }
                         if parcel["prop_address"]:
                             self._idx[owner] = parcel
-                            # Build 2-word prefix index for fast fuzzy matching
                             words = owner.split()
                             if len(words) >= 2:
                                 prefix = f"{words[0]} {words[1]}"
@@ -291,55 +279,40 @@ class ParcelLookup:
     def lookup(self, owner: str) -> dict:
         if not self._loaded or not owner:
             return {}
-
-        # Handle multiple grantors separated by ;
-        # Try each part, preferring ones with real (non-zero) addresses
         if ";" in owner:
             best = {}
             for part in owner.split(";"):
                 hit = self._lookup_single(part.strip())
                 if hit and hit.get("prop_address"):
-                    addr = hit["prop_address"]
-                    # Prefer non-zero addresses
-                    if not addr.startswith("0 "):
+                    if not hit["prop_address"].startswith("0 "):
                         return hit
                     if not best:
                         best = hit
             return best
-
         return self._lookup_single(owner)
 
     def _lookup_single(self, owner: str) -> dict:
-        """Look up a single owner name (no semicolons)."""
         if not owner:
             return {}
-
         n = self._normalise(owner)
 
-        # 1. Exact match
         hit = self._idx.get(n)
         if hit:
             return hit
 
-        # 2. Handle "ESTATE OF FIRSTNAME ... LASTNAME" — last word is last name
         estate_m = re.match(r'^ESTATE\s+OF\s+(.+)', n)
         if estate_m:
             words = estate_m.group(1).split()
             if words:
                 last = words[-1]
-                # Try LAST FIRST
                 rearranged = f"{last} {' '.join(words[:-1])}".strip()
                 hit = self._idx.get(rearranged)
                 if hit and hit.get("prop_address"):
                     return hit
-                # Try prefix: LAST + first 3 chars of first name
-                if len(words) >= 2:
-                    prefix = f"{last} {words[0][:3]}"
-                    for key, val in self._idx.items():
-                        if key.startswith(last + " ") and val.get("prop_address") and not val["prop_address"].startswith("0 "):
-                            return val
+                for key, val in self._idx.items():
+                    if key.startswith(last + " ") and val.get("prop_address") and not val["prop_address"].startswith("0 "):
+                        return val
 
-        # 3. Strip suffixes: EST, ESTATE, SR, JR, II, III
         n_clean = re.sub(r"\s*\b(EST|ESTATE|SR|JR|II|III|IV)\b.*", "", n).strip()
         if n_clean != n:
             hit = self._idx.get(n_clean)
@@ -348,15 +321,12 @@ class ParcelLookup:
 
         parts = n_clean.split()
 
-        # 4. Fast 2-word prefix lookup — skip vacant/zero addresses
         if len(parts) >= 2:
             prefix2 = f"{parts[0]} {parts[1]}"
             hit = self._prefix_idx.get(prefix2)
             if hit and hit.get("prop_address") and not hit["prop_address"].startswith("0 "):
                 return hit
 
-        # 5. Fuzzy first-name match: last name + first 3 chars of first name
-        #    Handles JOHNNY->JOHN, BESSIE->BES, LEIGH-ANN->LEI etc.
         if len(parts) >= 2:
             short = parts[1][:3]
             for key, val in self._idx.items():
@@ -368,14 +338,12 @@ class ParcelLookup:
                         and not val["prop_address"].startswith("0 ")):
                     return val
 
-        # 6. Try reversed name (LAST FIRST -> FIRST LAST)
         if len(parts) >= 2:
             rev = f"{parts[-1]} {parts[0]}"
             hit = self._prefix_idx.get(rev)
             if hit and hit.get("prop_address") and not hit["prop_address"].startswith("0 "):
                 return hit
 
-        # 7. Fall back to prefix match even with zero address
         if len(parts) >= 2:
             prefix2 = f"{parts[0]} {parts[1]}"
             hit = self._prefix_idx.get(prefix2)
@@ -389,33 +357,19 @@ class ParcelLookup:
 # Harris County Clerk - Playwright scraper
 # ---------------------------------------------------------------------------
 class ClerkScraper:
-    """
-    Drives the Harris County Clerk Document Search Portal using Playwright.
-
-    Real Property page (RP.aspx) - all property doc types.
-    Foreclosures page (FRCL_R.aspx) - NOFC / TAXDEED only.
-
-    Confirmed form field IDs from live portal log (run #4):
-      Search btn : ctl00_ContentPlaceHolder1_btnSearch
-      Date From  : ctl00_ContentPlaceHolder1_tbDateFrom  (assumed same pattern)
-      Date To    : ctl00_ContentPlaceHolder1_tbDateTo
-      Inst. Type : ctl00_ContentPlaceHolder1_tbInstrType
-    """
 
     def __init__(self, date_from: str, date_to: str):
-        self.date_from = date_from   # YYYY-MM-DD
+        self.date_from = date_from
         self.date_to   = date_to
 
     @staticmethod
     def _to_portal_date(iso: str) -> str:
-        """YYYY-MM-DD -> MM/DD/YYYY (portal format)"""
         try:
             return datetime.strptime(iso, "%Y-%m-%d").strftime("%m/%d/%Y")
         except Exception:
             return iso
 
     async def _dump_inputs(self, page):
-        """Log all input/select IDs on page so we can identify correct field names."""
         inputs = await page.evaluate("""
             () => Array.from(document.querySelectorAll('input,select,textarea'))
               .filter(el => el.id || el.name)
@@ -427,15 +381,9 @@ class ClerkScraper:
         log.info("  === END INPUTS ===")
 
     async def _set_field(self, page, fragments: list[str], value: str, field_name: str) -> bool:
-        """
-        Fill a form field by injecting value directly via JavaScript.
-        This bypasses Playwright visibility checks which fail on ASP.NET portals
-        where fields exist in DOM but may not be 'visible' per Playwright's rules.
-        """
         for frag in fragments:
             js = f"""
             () => {{
-                // Search all inputs/selects whose id or name contains the fragment
                 const els = Array.from(document.querySelectorAll(
                     'input[id*="{frag}"], input[name*="{frag}"], select[id*="{frag}"], select[name*="{frag}"]'
                 )).filter(el => el.type !== 'hidden');
@@ -466,11 +414,9 @@ class ClerkScraper:
         return False
 
     async def _fill_rp_form(self, page, doc_code: str, url: str = ""):
-        """Fill the Real Property search form and submit."""
         portal_from = self._to_portal_date(self.date_from)
         portal_to   = self._to_portal_date(self.date_to)
 
-        # Wait for form to be ready
         try:
             await page.wait_for_selector(
                 '#ctl00_ContentPlaceHolder1_txtFrom',
@@ -479,29 +425,24 @@ class ClerkScraper:
         except Exception:
             log.warning("  Form not ready after 15s — proceeding anyway")
 
-        # Dump all inputs on first call for each page type
-        if doc_code == TARGET_CODES[0] or (doc_code in FRCL_TYPES and doc_code == list(FRCL_TYPES)[0]):
+        if doc_code == TARGET_CODES[0]:
             await self._dump_inputs(page)
 
-        # Date From — RP page: txtFrom / FRCL page: may use txtBegDate or txtFrom
         await self._set_field(page, [
             "txtFrom", "txtBegDate", "txtStartDate", "DateFrom",
             "dateFrom", "tbDateFrom", "BeginDate",
         ], portal_from, "DateFrom")
 
-        # Date To — RP page: txtTo / FRCL page: may use txtEndDate or txtTo
         await self._set_field(page, [
             "txtTo", "txtEndDate", "txtStopDate", "DateTo",
             "dateTo", "tbDateTo", "EndDate",
         ], portal_to, "DateTo")
 
-        # Instrument Type — RP page: txtInstrument
         await self._set_field(page, [
             "txtInstrument", "txtDocType", "Instrument",
             "InstrType", "InstrumentType", "DocType",
         ], doc_code, "InstrType")
 
-        # Search button — confirmed id from run #4 log
         for sel in [
             '#ctl00_ContentPlaceHolder1_btnSearch',
             'input[id*="btnSearch"]',
@@ -521,25 +462,11 @@ class ClerkScraper:
         await page.wait_for_load_state("networkidle", timeout=45_000)
 
     async def _parse_rp_page(self, page, doc_code: str) -> list[dict]:
-        """
-        Parse results table from Harris County Clerk portal.
-
-        Confirmed column structure from live portal (April 2026):
-          0: File Number
-          1: File Date
-          2: Type Vol Page
-          3: Names (contains Grantor:/Grantee: lines)
-          4: Legal Description (contains Desc:/Lot:/Block:/Sec: etc.)
-          5: Pgs
-          6: Film Code  ← has the direct document link
-        """
         records: list[dict] = []
         cat, cat_label = DOC_TYPE_MAP.get(doc_code, ("other", doc_code))
         html = await page.content()
         soup = BeautifulSoup(html, "lxml")
 
-        # Find results table — confirmed structure: has "File Number" header
-        # and "Grantor:" text in the body
         result_table = None
         for tbl in soup.find_all("table"):
             tbl_text = tbl.get_text(" ", strip=True)
@@ -563,17 +490,12 @@ class ClerkScraper:
         if len(rows) < 2:
             return records
 
-        # Log first data row for debugging
         if len(rows) > 1:
             first_cells = rows[1].find_all(["td", "th"])
             log.info("  First row has %d cells: %s",
                      len(first_cells),
                      " | ".join(c.get_text(" ", strip=True)[:25] for c in first_cells[:8]))
 
-        # The portal renders each record across MULTIPLE <tr> rows.
-        # The first row of each record has the doc number (RP-YYYY-NNNNNN).
-        # Subsequent rows add more grantor/grantee names.
-        # Strategy: group consecutive rows by doc number.
         current: dict | None = None
         grouped: list[dict] = []
 
@@ -607,7 +529,6 @@ class ClerkScraper:
             try:
                 full = raw["text"]
 
-                # Extract Grantor names
                 grantors = []
                 for m in re.finditer(
                     r'Grantor\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*\|\s*\w|\s*$))',
@@ -617,7 +538,6 @@ class ClerkScraper:
                     if name and len(name) > 1 and name not in grantors:
                         grantors.append(name)
 
-                # Extract Grantee names
                 grantees = []
                 for m in re.finditer(
                     r'Grantee\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*\|\s*\w|\s*$))',
@@ -630,7 +550,6 @@ class ClerkScraper:
                 grantor = "; ".join(grantors)
                 grantee = "; ".join(grantees)
 
-                # Legal description
                 legal_text = ""
                 for key in ("Desc:", "Comment:", "Lot:", "Block:", "Abstract:", "Sec:"):
                     m = re.search(key + r'\s*(.{3,80}?)(?=\s*(?:Desc:|Comment:|Lot:|Block:|$))', full)
@@ -638,12 +557,10 @@ class ClerkScraper:
                         legal_text = key + " " + m.group(1).strip()
                         break
 
-                # Clerk URL — build working direct search link
                 clerk_url = (
                     f"https://www.cclerk.hctx.net/applications/websearch/RP.aspx"
                     f"?FileNo={raw['doc_num']}"
                 )
-                # Override with real link if a non-javascript, non-EComm href found
                 for href in raw["hrefs"]:
                     if (href and "javascript" not in href.lower()
                             and "EComm" not in href and len(href) > 5):
@@ -689,7 +606,6 @@ class ClerkScraper:
             log.info("  %s page %d: %d records (total so far: %d)",
                      doc_code, page_num, len(recs), len(all_recs))
 
-            # Look for Next page button/link
             next_el = page.locator(
                 'a:has-text("Next"), input[value*="Next"], a[id*="Next"], a[id*="next"], '
                 'a:has-text(">"), td a:has-text(">")'
@@ -715,9 +631,6 @@ class ClerkScraper:
                 await self._fill_rp_form(page, doc_code, url)
                 recs = await self._paginate(page, doc_code)
 
-                # If we got 0 records, check if the portal is blocking us
-                # (blocked pages return 1 table with no results vs normal empty = 1 table too)
-                # Re-check by looking at page title / content for block indicators
                 if len(recs) == 0 and attempt < 3:
                     content = await page.content()
                     if any(x in content.lower() for x in ["session expired", "access denied",
@@ -740,7 +653,6 @@ class ClerkScraper:
 
     @staticmethod
     def _months_in_range(date_from: str, date_to: str) -> list[tuple[int, int]]:
-        """Return (year, month) tuples that overlap the given date range."""
         start = datetime.strptime(date_from, "%Y-%m-%d").replace(day=1)
         end   = datetime.strptime(date_to,   "%Y-%m-%d")
         months: list[tuple[int, int]] = []
@@ -751,7 +663,6 @@ class ClerkScraper:
         return months
 
     async def _fill_frcl_form(self, page, year: int, month: int):
-        """Select ddlYear / ddlMonth on FRCL_R.aspx and submit."""
         await page.wait_for_selector(
             "#ctl00_ContentPlaceHolder1_ddlYear",
             state="attached", timeout=15_000,
@@ -759,7 +670,6 @@ class ClerkScraper:
 
         await self._dump_inputs(page)
 
-        # Year dropdown — exact ID confirmed from live portal
         for val in (str(year), f"{year:04d}"):
             try:
                 await page.select_option("#ctl00_ContentPlaceHolder1_ddlYear", val)
@@ -767,10 +677,7 @@ class ClerkScraper:
                 break
             except Exception as exc:
                 log.debug("  ddlYear val=%s: %s", val, exc)
-        else:
-            log.warning("  FRCL: could not set year dropdown to %d", year)
 
-        # Month dropdown — try "1"–"12" and zero-padded "01"–"12"
         for val in (str(month), f"{month:02d}"):
             try:
                 await page.select_option("#ctl00_ContentPlaceHolder1_ddlMonth", val)
@@ -778,28 +685,16 @@ class ClerkScraper:
                 break
             except Exception as exc:
                 log.debug("  ddlMonth val=%s: %s", val, exc)
-        else:
-            log.warning("  FRCL: could not set month dropdown to %d", month)
 
-        # Search button — exact ID confirmed from live portal
         await page.click("#ctl00_ContentPlaceHolder1_btnSearch")
         log.info("  FRCL Search btn clicked")
-
         await page.wait_for_load_state("networkidle", timeout=45_000)
 
     async def _parse_frcl_page(self, page, year: int, month: int) -> list[dict]:
         """
-        Parse one page of FRCL_R.aspx results.
-
-        Confirmed column layout (live portal):
-          col 0 — Doc ID   (e.g. FRCL-2026-612)
-          col 1 — Sale Date (MM/DD/YYYY)
-          col 2 — File Date (MM/DD/YYYY)
-          col 3 — Pgs
-
-        Table index 1 is always the data table on this page.
-        No owner/grantor columns exist; those fields are left blank.
-        Records are filtered to self.date_from..self.date_to by file date.
+        Parse FRCL_R.aspx results.
+        The data table contains FRCL-YYYY-NNNN doc numbers.
+        We find it by searching for that pattern rather than using a fixed index.
         """
         records: list[dict] = []
         html = await page.content()
@@ -808,19 +703,26 @@ class ClerkScraper:
         all_tables = soup.find_all("table")
         log.info("  FRCL %04d-%02d: %d tables on page", year, month, len(all_tables))
 
-        if len(all_tables) < 2:
-            log.warning("  FRCL: expected table[1] but only %d tables found", len(all_tables))
+        # Find the data table by looking for FRCL doc number pattern
+        result_table = None
+        for tbl in all_tables:
+            tbl_text = tbl.get_text(" ", strip=True)
+            if re.search(r'[A-Z]{2,}-\d{4}-\d+', tbl_text):
+                result_table = tbl
+                break
+
+        if not result_table:
+            log.warning("  FRCL: no data table found for %04d-%02d (no doc numbers found)", year, month)
             return records
 
-        result_table = all_tables[1]
         rows = result_table.find_all("tr")
-        log.info("  FRCL table[1] %04d-%02d: %d rows", year, month, len(rows))
+        log.info("  FRCL table %04d-%02d: %d rows", year, month, len(rows))
 
         if len(rows) < 2:
             log.info("  FRCL: no data rows for %04d-%02d", year, month)
             return records
 
-        # Log header + first data row for future debugging
+        # Log header + first data row for debugging
         header_cells = rows[0].find_all(["td", "th"])
         log.info("  FRCL headers: %s",
                  " | ".join(c.get_text(" ", strip=True) for c in header_cells))
@@ -841,15 +743,15 @@ class ClerkScraper:
             try:
                 doc_num   = cells[0].get_text(" ", strip=True)
                 sale_date = cells[1].get_text(" ", strip=True)
-                file_date = cells[2].get_text(" ", strip=True)
+                file_date = cells[2].get_text(" ", strip=True) if len(cells) > 2 else ""
 
-                # Skip header-repeat rows
+                # Skip non-doc rows
                 if not re.search(r'[A-Z]{2,}-\d{4}-\d+', doc_num):
                     continue
 
                 filed = _parse_date(file_date) or _parse_date(sale_date)
 
-                # Filter to requested date window by file date
+                # Filter to requested date window
                 if dt_from and dt_to and filed:
                     try:
                         filed_dt = datetime.strptime(filed[:10], "%Y-%m-%d")
@@ -858,12 +760,12 @@ class ClerkScraper:
                     except Exception:
                         pass
 
-                # FRCL page doesn't distinguish NOFC vs TAXDEED in these columns;
-                # default to NOFC (Notice of Foreclosure) — the dominant type here.
-                doc_code = "NOFC"
+                # Determine doc type — FRCL page shows both NOFC and TAXDEED
+                # Look for "TAX" in surrounding text to identify tax deeds
+                row_text = " ".join(c.get_text(" ", strip=True) for c in cells)
+                doc_code = "TAXDEED" if re.search(r'\bTAX\b|\bTAXDEED\b', row_text, re.I) else "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
 
-                # Clerk URL — link on doc_num cell if present, else build search URL
                 clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
                 link = cells[0].find("a", href=True)
                 if link:
@@ -922,7 +824,6 @@ class ClerkScraper:
         return all_recs
 
     async def _scrape_frcl_month(self, page, year: int, month: int) -> list[dict]:
-        """Navigate to FRCL_R.aspx, select year/month, return all matching records."""
         for attempt in range(1, 4):
             try:
                 await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=60_000)
@@ -937,7 +838,6 @@ class ClerkScraper:
         return []
 
     async def fetch_frcl_on_page(self, page) -> list[dict]:
-        """Scrape NOFC and TAXDEED from FRCL_R.aspx for every month in the date range."""
         months = self._months_in_range(self.date_from, self.date_to)
         log.info("FRCL scraping %d month(s): %s",
                  len(months), ", ".join(f"{y}-{m:02d}" for y, m in months))
@@ -950,10 +850,7 @@ class ClerkScraper:
                 await asyncio.sleep(2)
         return all_records
 
-    # ------------------------------------------------------------------
-
     async def fetch_all_on_page(self, page) -> list[dict]:
-        """Scrape all doc types using an existing Playwright page (reuses browser)."""
         all_records: list[dict] = []
         for doc_code in TARGET_CODES:
             url = CLERK_FRCL_URL if doc_code in FRCL_TYPES else CLERK_RP_URL
@@ -988,9 +885,7 @@ class ClerkScraper:
                 recs = await self._scrape_doc_type(page, doc_code, url)
                 log.info("  %s -> %d records", doc_code, len(recs))
                 all_records.extend(recs)
-                # Save partial results after each doc type so data isn't lost on timeout
                 _save_partial(all_records, self.date_from, self.date_to)
-                # Human-like delay between doc types
                 if i < len(TARGET_CODES) - 1:
                     await asyncio.sleep(2 + (i % 3))
 
@@ -1000,11 +895,9 @@ class ClerkScraper:
 
 
 # ---------------------------------------------------------------------------
-# Fallback static scraper (requests + BeautifulSoup)
+# Fallback static scraper
 # ---------------------------------------------------------------------------
 class StaticClerkScraper:
-    """Fallback when Playwright unavailable. Handles ASP.NET __doPostBack."""
-
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                       "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -1027,8 +920,7 @@ class StaticClerkScraper:
     def _viewstate(self, html: str) -> dict[str, str]:
         soup = BeautifulSoup(html, "lxml")
         fields = {}
-        for name in ["__VIEWSTATE", "__VIEWSTATEGENERATOR", "__EVENTVALIDATION",
-                     "__SCROLLPOSITIONX", "__SCROLLPOSITIONY"]:
+        for name in ["__VIEWSTATE", "__VIEWSTATEGENERATOR", "__EVENTVALIDATION"]:
             el = soup.find("input", {"name": name})
             if el:
                 fields[name] = el.get("value", "")
@@ -1041,7 +933,6 @@ class StaticClerkScraper:
             resp = self.session.get(url, timeout=30)
             resp.raise_for_status()
             vs = self._viewstate(resp.text)
-
             payload = {
                 **vs,
                 "__EVENTTARGET":   "",
@@ -1053,24 +944,8 @@ class StaticClerkScraper:
             }
             resp = self.session.post(url, data=payload, timeout=60)
             resp.raise_for_status()
-
-            while True:
-                soup = BeautifulSoup(resp.text, "lxml")
-                rows = self._parse_table(soup, doc_code, cat, cat_label)
-                records.extend(rows)
-
-                next_link = soup.find("a", string=re.compile(r"Next|>", re.I))
-                if not next_link:
-                    break
-                onclick = next_link.get("href", "")
-                m = re.search(r"__doPostBack\('([^']+)','([^']*)'\)", onclick)
-                if not m:
-                    break
-                vs2 = self._viewstate(resp.text)
-                payload2 = {**vs2, "__EVENTTARGET": m.group(1), "__EVENTARGUMENT": m.group(2)}
-                resp = self.session.post(url, data=payload2, timeout=60)
-                resp.raise_for_status()
-
+            soup = BeautifulSoup(resp.text, "lxml")
+            records.extend(self._parse_table(soup, doc_code, cat, cat_label))
         except Exception as exc:
             log.warning("Static scraper %s @ %s: %s", doc_code, url, exc)
         return records
@@ -1079,17 +954,13 @@ class StaticClerkScraper:
         records = []
         for tbl in soup.find_all("table"):
             text = tbl.get_text(" ", strip=True).lower()
-            if not any(k in text for k in ("grantor", "filed", "instrument", "file number")):
+            if not any(k in text for k in ("grantor", "filed", "file number")):
                 continue
             for row in tbl.find_all("tr")[1:]:
                 cells = row.find_all("td")
                 if not cells:
                     continue
                 try:
-                    link = row.find("a", href=True)
-                    href = link.get("href", "") if link else ""
-                    clerk_url = (href if href.startswith("http")
-                                 else (CLERK_BASE + "/" + href.lstrip("/")) if href else "")
                     texts = [c.get_text(" ", strip=True) for c in cells]
                     records.append({
                         "doc_num":      texts[0] if texts else "",
@@ -1099,13 +970,13 @@ class StaticClerkScraper:
                         "cat_label":    cat_label,
                         "owner":        texts[2] if len(texts) > 2 else "",
                         "grantee":      texts[3] if len(texts) > 3 else "",
-                        "amount":       _parse_amount(texts[4] if len(texts) > 4 else ""),
-                        "legal":        texts[5] if len(texts) > 5 else "",
+                        "amount":       None,
+                        "legal":        "",
                         "prop_address": "", "prop_city": "Houston",
                         "prop_state":   "TX", "prop_zip": "",
                         "mail_address": "", "mail_city": "",
                         "mail_state":   "", "mail_zip": "",
-                        "clerk_url":    clerk_url,
+                        "clerk_url":    "",
                         "flags":        [], "score": 0,
                     })
                 except Exception:
@@ -1117,16 +988,12 @@ class StaticClerkScraper:
         for doc_code in TARGET_CODES:
             url = CLERK_FRCL_URL if doc_code in FRCL_TYPES else CLERK_RP_URL
             log.info("Static scraping %s", doc_code)
-            for attempt in range(1, 4):
-                try:
-                    recs = self._search(url, doc_code)
-                    log.info("  %s -> %d records", doc_code, len(recs))
-                    all_records.extend(recs)
-                    break
-                except Exception as exc:
-                    log.warning("  Attempt %d failed: %s", attempt, exc)
-                    if attempt < 3:
-                        time.sleep(3 * attempt)
+            try:
+                recs = self._search(url, doc_code)
+                log.info("  %s -> %d records", doc_code, len(recs))
+                all_records.extend(recs)
+            except Exception as exc:
+                log.warning("  %s failed: %s", doc_code, exc)
         return all_records
 
 
@@ -1197,7 +1064,6 @@ def save_output(records: list[dict], date_from: str, date_to: str):
 
 
 def _save_partial(records: list[dict], date_from: str, date_to: str):
-    """Save partial results mid-run so data isn't lost on timeout."""
     try:
         deduped = _deduplicate(list(records))
         with_addr = sum(1 for r in deduped if r.get("prop_address"))
@@ -1214,7 +1080,7 @@ def _save_partial(records: list[dict], date_from: str, date_to: str):
             with open(dest, "w", encoding="utf-8") as fh:
                 json.dump(payload, fh, indent=2, default=str)
     except Exception:
-        pass  # never fail mid-scrape
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -1233,9 +1099,8 @@ async def main():
     log.info("Portal FRCL: %s", CLERK_FRCL_URL)
     log.info("=" * 60)
 
-    # 1. Clerk scrape — chunked (portal rejects ranges > ~30 days)
     CHUNK_DAYS  = 14
-    CHUNK_DELAY = 45  # seconds between chunks
+    CHUNK_DELAY = 45
 
     chunks = []
     cur = datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -1281,7 +1146,7 @@ async def main():
                         pass
                     await asyncio.sleep(CHUNK_DELAY)
 
-            # FRCL scraping — NOFC and TAXDEED via year/month dropdowns
+            # FRCL scraping — NOFC and TAXDEED
             log.info("--- FRCL scraping: NOFC and TAXDEED ---")
             try:
                 frcl_scraper = ClerkScraper(date_from, date_to)
@@ -1308,17 +1173,13 @@ async def main():
     records = all_raw
     log.info("Raw records fetched: %d", len(records))
 
-    # 2. Dedup
     records = _deduplicate(records)
     log.info("After dedup: %d", len(records))
 
-    # 3. HCAD enrichment
     log.info("Loading HCAD parcel data...")
     parcel_db = ParcelLookup()
     parcel_db.load()
     enriched = 0
-    web_lookups = 0
-
     for rec in records:
         owner = rec.get("owner", "")
         if not owner:
@@ -1327,23 +1188,20 @@ async def main():
         if hit and hit.get("prop_address"):
             rec.update({k: v for k, v in hit.items() if v})
             enriched += 1
-        web_lookups += 1
     log.info("Parcel enrichment: %d/%d matched", enriched, len(records))
 
-    # 4. Score
     for rec in records:
         score, flags = compute_score(rec)
         rec["score"] = score
         rec["flags"] = flags
     records.sort(key=lambda r: r.get("score", 0), reverse=True)
 
-    # 5. Save
     save_output(records, date_from, date_to)
     export_ghl_csv(records, GHL_CSV)
 
     log.info("=" * 60)
     log.info("DONE - %d total leads", len(records))
-    for code in TARGET_CODES:
+    for code in TARGET_CODES + ["NOFC", "TAXDEED"]:
         cnt = sum(1 for r in records if r.get("doc_type") == code)
         if cnt:
             log.info("  %-12s %d", code, cnt)
