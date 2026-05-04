@@ -711,12 +711,6 @@ class ClerkScraper:
             log.warning("  FRCL %04d-%02d: no FRCL- rows found", year, month)
             return records
 
-        try:
-            dt_from = datetime.strptime(self.date_from, "%Y-%m-%d")
-            dt_to   = datetime.strptime(self.date_to,   "%Y-%m-%d")
-        except Exception:
-            dt_from = dt_to = None
-
         for frcl_row in frcl_rows:
             try:
                 cells_text = await frcl_row.locator("td").all_text_contents()
@@ -730,8 +724,8 @@ class ClerkScraper:
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
                     continue
 
+                # Use sale date as filed date (more relevant for motivated sellers)
                 filed = _parse_date(sale_date) or _parse_date(file_date)
-
 
                 doc_code = "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
@@ -762,7 +756,7 @@ class ClerkScraper:
             except Exception as exc:
                 log.debug("FRCL record build error: %s", exc)
 
-        log.info("  FRCL %04d-%02d: %d records after date filter", year, month, len(records))
+        log.info("  FRCL %04d-%02d: %d records", year, month, len(records))
         return records
 
     async def _paginate_frcl(self, page, year: int, month: int) -> list[dict]:
