@@ -87,6 +87,7 @@ DOC_TYPE_MAP: dict[str, tuple[str, str]] = {
     "DECREE": ("jud",         "Divorce Decree"),
     "BNKRCY": ("lp",          "Bankruptcy"),
     "NOFC":   ("foreclosure", "Notice of Foreclosure"),
+  "TAXDEED":("foreclosure", "Tax Deed"),
     
 }
 
