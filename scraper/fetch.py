@@ -723,10 +723,11 @@ class ClerkScraper:
                 if len(cells_text) < 3:
                     continue
 
-                doc_num   = cells_text[0].strip()
-                sale_date = cells_text[1].strip()
-                file_date = cells_text[2].strip()
-
+                # Col 0 is blank icon, Col 1=Doc ID, Col 2=Sale Date, Col 3=File Date
+                doc_num   = cells_text[1].strip() if len(cells_text) > 1 else ""
+                sale_date = cells_text[2].strip() if len(cells_text) > 2 else ""
+                file_date = cells_text[3].strip() if len(cells_text) > 3 else ""
+                
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
                     if row_idx < 3:
                         log.info("  FRCL row[%d] doc_num %r did not match FRCL-YYYY-N pattern", row_idx, doc_num)
