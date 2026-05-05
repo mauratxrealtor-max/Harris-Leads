@@ -87,13 +87,12 @@ DOC_TYPE_MAP: dict[str, tuple[str, str]] = {
     "DECREE": ("jud",         "Divorce Decree"),
     "BNKRCY": ("lp",          "Bankruptcy"),
     "NOFC":   ("foreclosure", "Notice of Foreclosure"),
-    "TAXDEED":("foreclosure", "Tax Deed"),
+    
 }
 
 # NOFC and TAXDEED come from FRCL_R.aspx (year/month dropdowns), not RP.aspx
 FRCL_TYPES: set[str] = {"NOFC"}
 
-TARGET_CODES = [c for c in DOC_TYPE_MAP.keys() if c not in FRCL_TYPES]
 
 # ---------------------------------------------------------------------------
 # Helpers
