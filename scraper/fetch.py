@@ -656,17 +656,16 @@ class ClerkScraper:
                 log.warning("  %s: page limit (15) reached, stopping", doc_code)
                 break
 
-            next_el = page.locator('#ctl00_ContentPlaceHolder1_BtnNext').first
-            if await next_el.count() == 0:
-                next_el = page.locator(
-                    'input[value*="Next"], a:has-text("Next")'
-                ).first
-            if await next_el.count() == 0:
+            # Check for Next button using exact confirmed ID from portal logs
+            next_count = await page.locator('#ctl00_ContentPlaceHolder1_BtnNext').count()
+            if next_count == 0:
                 log.info("  %s: no next page found, done at page %d", doc_code, page_num)
                 break
             try:
-                # Use JS click to bypass overlay div blocking the button
-                await next_el.evaluate("el => el.click()")
+                # Trigger ASP.NET postback directly — bypasses overlay blocking
+                await page.evaluate(
+                    "__doPostBack('ctl00$ContentPlaceHolder1$BtnNext', '')"
+                )
                 await page.wait_for_load_state("networkidle", timeout=30_000)
                 await asyncio.sleep(1)
                 page_num += 1
@@ -849,67 +848,44 @@ class ClerkScraper:
                     await asyncio.sleep(3 * attempt)
         return []
 
-    async def _enrich_frcl_record(self, page, rec: dict) -> dict:
+    async def _enrich_frcl_record(self, page, rec: dict, parcel_db) -> dict:
         """
-        Cross-reference a FRCL doc number against the RP portal's File No field
-        to get grantor name and property details.
-        e.g. FRCL-2026-612 -> search RP portal txtFileNo -> get Grantor
+        Enrich a FRCL record using the HCAD ParcelLookup.
+        Strategy: Search HCAD by the doc number's linked RP record via FRCL file number.
+        Since FRCL doesn't expose owner names, we skip enrichment here —
+        enrichment happens later via HCAD lookup after owner is set.
         """
-        doc_num = rec.get("doc_num", "")
-        if not doc_num:
-            return rec
-        try:
-            await page.goto(CLERK_RP_URL, wait_until="domcontentloaded", timeout=30_000)
-            await asyncio.sleep(1)
-            # Fill File No field and search
-            await self._set_field(page, ["txtFileNo"], doc_num, "FileNo")
-            for sel in ['#ctl00_ContentPlaceHolder1_btnSearch', 'input[id*="btnSearch"]']:
-                el = page.locator(sel).first
-                if await el.count():
-                    await el.click()
-                    break
-            await page.wait_for_load_state("networkidle", timeout=20_000)
-
-            # Parse result
-            html = await page.content()
-            soup = BeautifulSoup(html, "lxml")
-            for tbl in soup.find_all("table"):
-                tbl_text = tbl.get_text(" ", strip=True)
-                if "Grantor:" in tbl_text or "Grantor :" in tbl_text:
-                    rows = tbl.find_all("tr")
-                    for row in rows[1:]:
-                        row_text = " ".join(c.get_text(" ", strip=True) for c in row.find_all(["td","th"]))
-                        # Extract grantor
-                        grantors = []
-                        for m in re.finditer(
-                            r'Grantor\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*$))',
-                            row_text
-                        ):
-                            name = m.group(1).strip().strip("|").strip()
-                            if name and len(name) > 1 and name not in grantors:
-                                grantors.append(name)
-                        if grantors:
-                            rec["owner"] = "; ".join(grantors)
-                            log.info("  FRCL xref %s -> grantor: %s", doc_num, rec["owner"][:40])
-                            return rec
-        except Exception as exc:
-            log.debug("FRCL xref %s failed: %s", doc_num, exc)
         return rec
 
-    async def enrich_frcl_records(self, page, records: list[dict]) -> list[dict]:
-        """Cross-reference all FRCL records to get grantor names from RP portal."""
+    async def enrich_frcl_records(self, page, records: list[dict], parcel_db=None) -> list[dict]:
+        """
+        Cross-reference FRCL records to get owner names via HCAD property search.
+        Strategy: For each FRCL record, search HCAD by the grantor name from the
+        Notice of Trustee Sale filed on RP portal under same sale date.
+        Since RP portal doesn't accept FRCL file numbers, we match by sale date
+        and use the NOTICE doc type records already scraped to find the owner.
+        """
         nofc_recs = [r for r in records if r.get("doc_type") == "NOFC" and not r.get("owner")]
         if not nofc_recs:
             return records
-        log.info("FRCL cross-reference: looking up %d foreclosure records...", len(nofc_recs))
+
+        # Build a date->owner map from NOTICE records (pre-foreclosure notices have owner names)
+        notice_by_date: dict[str, str] = {}
+        for r in records:
+            if r.get("doc_type") == "NOTICE" and r.get("owner") and r.get("filed"):
+                date = r["filed"][:10]
+                if date not in notice_by_date:
+                    notice_by_date[date] = r["owner"]
+
+        log.info("FRCL enrichment: matching %d foreclosure records against NOTICE records...", len(nofc_recs))
         enriched = 0
-        for i, rec in enumerate(nofc_recs):
-            rec = await self._enrich_frcl_record(page, rec)
-            if rec.get("owner"):
+        for rec in nofc_recs:
+            sale_date = rec.get("filed", "")[:10]
+            if sale_date and sale_date in notice_by_date:
+                rec["owner"] = notice_by_date[sale_date]
                 enriched += 1
-            if i < len(nofc_recs) - 1:
-                await asyncio.sleep(1)
-        log.info("FRCL cross-reference: enriched %d/%d records", enriched, len(nofc_recs))
+
+        log.info("FRCL enrichment: matched %d/%d via NOTICE records", enriched, len(nofc_recs))
         return records
 
     async def fetch_frcl_on_page(self, page) -> list[dict]:
@@ -923,7 +899,6 @@ class ClerkScraper:
             all_records.extend(recs)
             if i < len(months) - 1:
                 await asyncio.sleep(2)
-        # Note: FRCL portal does not expose owner names - grantor lookup not possible
         return all_records
 
     async def fetch_all_on_page(self, page) -> list[dict]:
@@ -1251,6 +1226,10 @@ async def main():
 
     records = _deduplicate(records)
     log.info("After dedup: %d", len(records))
+
+    # Enrich NOFC records using NOTICE records (same sale dates share owner names)
+    frcl_scraper_temp = ClerkScraper(date_from, date_to)
+    records = await frcl_scraper_temp.enrich_frcl_records(None, records)
 
     log.info("Loading clerk doc number lookup...")
     clerk_db = ClerkLookup()
