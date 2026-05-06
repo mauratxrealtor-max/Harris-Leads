@@ -656,16 +656,19 @@ class ClerkScraper:
                 log.warning("  %s: page limit (15) reached, stopping", doc_code)
                 break
 
-            next_el = page.locator(
-                'a:has-text("Next"), input[value*="Next"], a[id*="Next"], a[id*="next"], '
-                'a:has-text(">"), td a:has-text(">")'
-            ).first
+            next_el = page.locator('#ctl00_ContentPlaceHolder1_BtnNext').first
+            if await next_el.count() == 0:
+                next_el = page.locator(
+                    'input[value*="Next"], a:has-text("Next")'
+                ).first
             if await next_el.count() == 0:
                 log.info("  %s: no next page found, done at page %d", doc_code, page_num)
                 break
             try:
-                await next_el.click()
+                # Use JS click to bypass overlay div blocking the button
+                await next_el.evaluate("el => el.click()")
                 await page.wait_for_load_state("networkidle", timeout=30_000)
+                await asyncio.sleep(1)
                 page_num += 1
             except Exception as exc:
                 log.warning("  %s: pagination stopped at page %d: %s", doc_code, page_num, exc)
@@ -920,8 +923,7 @@ class ClerkScraper:
             all_records.extend(recs)
             if i < len(months) - 1:
                 await asyncio.sleep(2)
-        # Cross-reference to get grantor names
-        all_records = await self.enrich_frcl_records(page, all_records)
+        # Note: FRCL portal does not expose owner names - grantor lookup not possible
         return all_records
 
     async def fetch_all_on_page(self, page) -> list[dict]:
