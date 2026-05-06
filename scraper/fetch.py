@@ -633,11 +633,26 @@ class ClerkScraper:
     async def _paginate(self, page, doc_code: str) -> list[dict]:
         all_recs: list[dict] = []
         page_num = 1
+        last_first_doc = None  # detect infinite loop
+
         while True:
             recs = await self._parse_rp_page(page, doc_code)
             all_recs.extend(recs)
             log.info("  %s page %d: %d records (total so far: %d)",
                      doc_code, page_num, len(recs), len(all_recs))
+
+            # Detect infinite loop — same first doc as previous page means stuck
+            first_doc = recs[0].get("doc_num") if recs else None
+            if first_doc and first_doc == last_first_doc:
+                log.warning("  %s: loop detected at page %d (same first doc) — stopping",
+                            doc_code, page_num)
+                break
+            last_first_doc = first_doc
+
+            # Safety cap — no doc type should have more than 10 pages
+            if page_num >= 10:
+                log.warning("  %s: page limit reached (10), stopping", doc_code)
+                break
 
             next_el = page.locator(
                 'a:has-text("Next"), input[value*="Next"], a[id*="Next"], a[id*="next"], '
