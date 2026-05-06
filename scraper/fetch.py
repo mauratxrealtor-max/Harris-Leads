@@ -633,16 +633,15 @@ class ClerkScraper:
     async def _paginate(self, page, doc_code: str) -> list[dict]:
         all_recs: list[dict] = []
         page_num = 1
-        seen_docs: set[str] = set()  # track all doc nums seen to detect loops
+        seen_docs: set[str] = set()
 
         while True:
             recs = await self._parse_rp_page(page, doc_code)
 
-            # Detect loop — if ALL docs on this page were already seen, we're stuck
+            # Detect loop
             new_docs = [r.get("doc_num","") for r in recs if r.get("doc_num")]
             if new_docs and all(d in seen_docs for d in new_docs):
-                log.warning("  %s: all docs on page %d already seen — stopping loop",
-                            doc_code, page_num)
+                log.warning("  %s: loop detected at page %d — stopping", doc_code, page_num)
                 break
             for d in new_docs:
                 seen_docs.add(d)
@@ -651,23 +650,19 @@ class ClerkScraper:
             log.info("  %s page %d: %d records (total so far: %d)",
                      doc_code, page_num, len(recs), len(all_recs))
 
-            # Safety cap
             if page_num >= 15:
-                log.warning("  %s: page limit (15) reached, stopping", doc_code)
+                log.warning("  %s: page limit reached, stopping", doc_code)
                 break
 
-            # Check for Next button using exact confirmed ID from portal logs
-            next_count = await page.locator('#ctl00_ContentPlaceHolder1_BtnNext').count()
-            if next_count == 0:
-                log.info("  %s: no next page found, done at page %d", doc_code, page_num)
+            # Try BtnNext via force click (bypasses overlay)
+            next_el = page.locator('#ctl00_ContentPlaceHolder1_BtnNext')
+            if await next_el.count() == 0:
+                log.info("  %s: no next page, done at page %d", doc_code, page_num)
                 break
             try:
-                # Trigger ASP.NET postback directly — bypasses overlay blocking
-                await page.evaluate(
-                    "__doPostBack('ctl00$ContentPlaceHolder1$BtnNext', '')"
-                )
+                await next_el.click(force=True, timeout=10_000)
                 await page.wait_for_load_state("networkidle", timeout=30_000)
-                await asyncio.sleep(3)  # Wait for UpdatePanel to re-render
+                await asyncio.sleep(2)
                 page_num += 1
             except Exception as exc:
                 log.warning("  %s: pagination stopped at page %d: %s", doc_code, page_num, exc)
@@ -858,38 +853,7 @@ class ClerkScraper:
         return rec
 
     async def enrich_frcl_records(self, page, records: list[dict], parcel_db=None) -> list[dict]:
-        """
-        Cross-reference FRCL records to get owner names via HCAD property search.
-        Strategy: For each FRCL record, search HCAD by the grantor name from the
-        Notice of Trustee Sale filed on RP portal under same sale date.
-        Since RP portal doesn't accept FRCL file numbers, we match by sale date
-        and use the NOTICE doc type records already scraped to find the owner.
-        """
-        nofc_recs = [r for r in records if r.get("doc_type") == "NOFC" and not r.get("owner")]
-        if not nofc_recs:
-            return records
-
-        # Build a date->owner+grantee map from NOTICE records
-        notice_by_date: dict[str, dict] = {}
-        for r in records:
-            if r.get("doc_type") == "NOTICE" and r.get("owner") and r.get("filed"):
-                date = r["filed"][:10]
-                if date not in notice_by_date:
-                    notice_by_date[date] = {
-                        "owner":   r.get("owner", ""),
-                        "grantee": r.get("grantee", ""),
-                    }
-
-        log.info("FRCL enrichment: matching %d foreclosure records against NOTICE records...", len(nofc_recs))
-        enriched = 0
-        for rec in nofc_recs:
-            sale_date = rec.get("filed", "")[:10]
-            if sale_date and sale_date in notice_by_date:
-                rec["owner"]   = notice_by_date[sale_date]["owner"]
-                rec["grantee"] = notice_by_date[sale_date]["grantee"]
-                enriched += 1
-
-        log.info("FRCL enrichment: matched %d/%d via NOTICE records", enriched, len(nofc_recs))
+        """FRCL records have no owner names from the portal — leave blank."""
         return records
 
     async def fetch_frcl_on_page(self, page) -> list[dict]:
