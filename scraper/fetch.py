@@ -633,25 +633,27 @@ class ClerkScraper:
     async def _paginate(self, page, doc_code: str) -> list[dict]:
         all_recs: list[dict] = []
         page_num = 1
-        last_first_doc = None  # detect infinite loop
+        seen_docs: set[str] = set()  # track all doc nums seen to detect loops
 
         while True:
             recs = await self._parse_rp_page(page, doc_code)
+
+            # Detect loop — if ALL docs on this page were already seen, we're stuck
+            new_docs = [r.get("doc_num","") for r in recs if r.get("doc_num")]
+            if new_docs and all(d in seen_docs for d in new_docs):
+                log.warning("  %s: all docs on page %d already seen — stopping loop",
+                            doc_code, page_num)
+                break
+            for d in new_docs:
+                seen_docs.add(d)
+
             all_recs.extend(recs)
             log.info("  %s page %d: %d records (total so far: %d)",
                      doc_code, page_num, len(recs), len(all_recs))
 
-            # Detect infinite loop — same first doc as previous page means stuck
-            first_doc = recs[0].get("doc_num") if recs else None
-            if first_doc and first_doc == last_first_doc:
-                log.warning("  %s: loop detected at page %d (same first doc) — stopping",
-                            doc_code, page_num)
-                break
-            last_first_doc = first_doc
-
-            # Safety cap — no doc type should have more than 10 pages
-            if page_num >= 10:
-                log.warning("  %s: page limit reached (10), stopping", doc_code)
+            # Safety cap
+            if page_num >= 15:
+                log.warning("  %s: page limit (15) reached, stopping", doc_code)
                 break
 
             next_el = page.locator(
@@ -765,9 +767,10 @@ class ClerkScraper:
                 if len(cells_text) < 3:
                     continue
 
-                doc_num   = cells_text[0].strip()
-                sale_date = cells_text[1].strip()
-                file_date = cells_text[2].strip()
+                # Col 0 is blank/icon, Col 1=Doc ID, Col 2=Sale Date, Col 3=File Date
+                doc_num   = cells_text[1].strip() if len(cells_text) > 1 else ""
+                sale_date = cells_text[2].strip() if len(cells_text) > 2 else ""
+                file_date = cells_text[3].strip() if len(cells_text) > 3 else ""
 
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
                     continue
