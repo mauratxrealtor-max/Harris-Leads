@@ -87,11 +87,9 @@ DOC_TYPE_MAP: dict[str, tuple[str, str]] = {
     "DECREE": ("jud",         "Divorce Decree"),
     "BNKRCY": ("lp",          "Bankruptcy"),
     "NOFC":   ("foreclosure", "Notice of Foreclosure"),
-  "TAXDEED":("foreclosure", "Tax Deed"),
-    
 }
 
-# NOFC and TAXDEED come from FRCL_R.aspx (year/month dropdowns), not RP.aspx
+# NOFC comes from FRCL_R.aspx (year/month dropdowns), not RP.aspx
 FRCL_TYPES: set[str] = {"NOFC"}
 
 TARGET_CODES = [c for c in DOC_TYPE_MAP.keys() if c not in FRCL_TYPES]
@@ -352,6 +350,40 @@ class ParcelLookup:
                 return hit
 
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Clerk Doc Number Lookup (from deeds/owners/permits HCAD data)
+# ---------------------------------------------------------------------------
+class ClerkLookup:
+    """
+    Fast exact lookup of owner name + property address by RP doc number.
+    Built from HCAD deeds.txt + owners.txt + permits.txt data files.
+    File: data/clerk_lookup.json.gz
+    """
+
+    def __init__(self):
+        self._idx: dict[str, dict] = {}
+        self._loaded = False
+
+    def load(self):
+        path = ROOT / "data" / "clerk_lookup.json.gz"
+        if not path.exists():
+            log.warning("clerk_lookup.json.gz not found — clerk enrichment disabled")
+            return
+        import gzip as gz
+        try:
+            with gz.open(path, "rt", encoding="utf-8") as f:
+                self._idx = json.load(f)
+            log.info("ClerkLookup loaded: %d records", len(self._idx))
+            self._loaded = True
+        except Exception as exc:
+            log.error("Failed to load clerk_lookup.json.gz: %s", exc)
+
+    def lookup(self, doc_num: str) -> dict:
+        if not self._loaded or not doc_num:
+            return {}
+        return self._idx.get(doc_num, {})
 
 
 # ---------------------------------------------------------------------------
@@ -712,26 +744,17 @@ class ClerkScraper:
             log.warning("  FRCL %04d-%02d: no FRCL- rows found", year, month)
             return records
 
-        for row_idx, frcl_row in enumerate(frcl_rows):
+        for frcl_row in frcl_rows:
             try:
                 cells_text = await frcl_row.locator("td").all_text_contents()
-
-                if row_idx < 3:
-                    log.info("  FRCL row[%d] cells(%d): %s",
-                             row_idx, len(cells_text),
-                             " | ".join(repr(c) for c in cells_text))
-
                 if len(cells_text) < 3:
                     continue
 
-                # Col 0 is blank icon, Col 1=Doc ID, Col 2=Sale Date, Col 3=File Date
-                doc_num   = cells_text[1].strip() if len(cells_text) > 1 else ""
-                sale_date = cells_text[2].strip() if len(cells_text) > 2 else ""
-                file_date = cells_text[3].strip() if len(cells_text) > 3 else ""
-                
+                doc_num   = cells_text[0].strip()
+                sale_date = cells_text[1].strip()
+                file_date = cells_text[2].strip()
+
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
-                    if row_idx < 3:
-                        log.info("  FRCL row[%d] doc_num %r did not match FRCL-YYYY-N pattern", row_idx, doc_num)
                     continue
 
                 # Use sale date as filed date (more relevant for motivated sellers)
@@ -805,6 +828,69 @@ class ClerkScraper:
                     await asyncio.sleep(3 * attempt)
         return []
 
+    async def _enrich_frcl_record(self, page, rec: dict) -> dict:
+        """
+        Cross-reference a FRCL doc number against the RP portal's File No field
+        to get grantor name and property details.
+        e.g. FRCL-2026-612 -> search RP portal txtFileNo -> get Grantor
+        """
+        doc_num = rec.get("doc_num", "")
+        if not doc_num:
+            return rec
+        try:
+            await page.goto(CLERK_RP_URL, wait_until="domcontentloaded", timeout=30_000)
+            await asyncio.sleep(1)
+            # Fill File No field and search
+            await self._set_field(page, ["txtFileNo"], doc_num, "FileNo")
+            for sel in ['#ctl00_ContentPlaceHolder1_btnSearch', 'input[id*="btnSearch"]']:
+                el = page.locator(sel).first
+                if await el.count():
+                    await el.click()
+                    break
+            await page.wait_for_load_state("networkidle", timeout=20_000)
+
+            # Parse result
+            html = await page.content()
+            soup = BeautifulSoup(html, "lxml")
+            for tbl in soup.find_all("table"):
+                tbl_text = tbl.get_text(" ", strip=True)
+                if "Grantor:" in tbl_text or "Grantor :" in tbl_text:
+                    rows = tbl.find_all("tr")
+                    for row in rows[1:]:
+                        row_text = " ".join(c.get_text(" ", strip=True) for c in row.find_all(["td","th"]))
+                        # Extract grantor
+                        grantors = []
+                        for m in re.finditer(
+                            r'Grantor\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*$))',
+                            row_text
+                        ):
+                            name = m.group(1).strip().strip("|").strip()
+                            if name and len(name) > 1 and name not in grantors:
+                                grantors.append(name)
+                        if grantors:
+                            rec["owner"] = "; ".join(grantors)
+                            log.info("  FRCL xref %s -> grantor: %s", doc_num, rec["owner"][:40])
+                            return rec
+        except Exception as exc:
+            log.debug("FRCL xref %s failed: %s", doc_num, exc)
+        return rec
+
+    async def enrich_frcl_records(self, page, records: list[dict]) -> list[dict]:
+        """Cross-reference all FRCL records to get grantor names from RP portal."""
+        nofc_recs = [r for r in records if r.get("doc_type") == "NOFC" and not r.get("owner")]
+        if not nofc_recs:
+            return records
+        log.info("FRCL cross-reference: looking up %d foreclosure records...", len(nofc_recs))
+        enriched = 0
+        for i, rec in enumerate(nofc_recs):
+            rec = await self._enrich_frcl_record(page, rec)
+            if rec.get("owner"):
+                enriched += 1
+            if i < len(nofc_recs) - 1:
+                await asyncio.sleep(1)
+        log.info("FRCL cross-reference: enriched %d/%d records", enriched, len(nofc_recs))
+        return records
+
     async def fetch_frcl_on_page(self, page) -> list[dict]:
         months = self._months_in_range(self.date_from, self.date_to)
         log.info("FRCL scraping %d month(s): %s",
@@ -816,6 +902,8 @@ class ClerkScraper:
             all_records.extend(recs)
             if i < len(months) - 1:
                 await asyncio.sleep(2)
+        # Cross-reference to get grantor names
+        all_records = await self.enrich_frcl_records(page, all_records)
         return all_records
 
     async def fetch_all_on_page(self, page) -> list[dict]:
@@ -1096,17 +1184,6 @@ async def main():
             page = await context.new_page()
             page.set_default_timeout(60_000)
 
-            # FRCL first — guarantees NOFC/TAXDEED are captured even if RP times out
-            log.info("--- FRCL scraping: NOFC and TAXDEED ---")
-            try:
-                frcl_scraper = ClerkScraper(date_from, date_to)
-                frcl_recs = await frcl_scraper.fetch_frcl_on_page(page)
-                log.info("FRCL total: %d records", len(frcl_recs))
-                all_raw.extend(frcl_recs)
-                _save_partial(all_raw, date_from, date_to)
-            except Exception as exc:
-                log.warning("FRCL scrape failed: %s", exc)
-
             for i, (c_from, c_to) in enumerate(chunks, 1):
                 log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
                 try:
@@ -1114,7 +1191,6 @@ async def main():
                     recs = await scraper.fetch_all_on_page(page)
                     log.info("Chunk %d: %d records (total: %d)", i, len(recs), len(all_raw) + len(recs))
                     all_raw.extend(recs)
-                    _save_partial(all_raw, date_from, date_to)
                 except Exception as exc:
                     log.warning("Chunk %d failed: %s — skipping", i, exc)
 
@@ -1125,6 +1201,17 @@ async def main():
                     except Exception:
                         pass
                     await asyncio.sleep(CHUNK_DELAY)
+
+            # FRCL scraping — NOFC and TAXDEED
+            log.info("--- FRCL scraping: NOFC and TAXDEED ---")
+            try:
+                frcl_scraper = ClerkScraper(date_from, date_to)
+                frcl_recs = await frcl_scraper.fetch_frcl_on_page(page)
+                log.info("FRCL total: %d records", len(frcl_recs))
+                all_raw.extend(frcl_recs)
+                _save_partial(all_raw, date_from, date_to)
+            except Exception as exc:
+                log.warning("FRCL scrape failed: %s", exc)
 
             await browser.close()
     else:
@@ -1145,19 +1232,40 @@ async def main():
     records = _deduplicate(records)
     log.info("After dedup: %d", len(records))
 
-    log.info("Loading HCAD parcel data...")
+    log.info("Loading clerk doc number lookup...")
+    clerk_db = ClerkLookup()
+    clerk_db.load()
+
+    log.info("Loading HCAD parcel data (fallback)...")
     parcel_db = ParcelLookup()
     parcel_db.load()
-    enriched = 0
+
+    enriched_clerk = 0
+    enriched_parcel = 0
     for rec in records:
-        owner = rec.get("owner", "")
-        if not owner:
+        doc_num = rec.get("doc_num", "")
+        owner   = rec.get("owner", "")
+
+        # 1. Try exact clerk lookup by doc number (fast, accurate)
+        hit = clerk_db.lookup(doc_num)
+        if hit and hit.get("address"):
+            rec["prop_address"] = hit["address"]
+            rec["prop_city"]    = "Houston"
+            rec["prop_state"]   = "TX"
+            if not owner and hit.get("owner"):
+                rec["owner"] = hit["owner"]
+            enriched_clerk += 1
             continue
-        hit = parcel_db.lookup(owner)
-        if hit and hit.get("prop_address"):
-            rec.update({k: v for k, v in hit.items() if v})
-            enriched += 1
-    log.info("Parcel enrichment: %d/%d matched", enriched, len(records))
+
+        # 2. Fall back to fuzzy HCAD name matching
+        if owner:
+            hit2 = parcel_db.lookup(owner)
+            if hit2 and hit2.get("prop_address"):
+                rec.update({k: v for k, v in hit2.items() if v})
+                enriched_parcel += 1
+
+    log.info("Enrichment: %d clerk lookup + %d HCAD fuzzy = %d/%d total",
+             enriched_clerk, enriched_parcel, enriched_clerk + enriched_parcel, len(records))
 
     for rec in records:
         score, flags = compute_score(rec)
@@ -1170,7 +1278,7 @@ async def main():
 
     log.info("=" * 60)
     log.info("DONE - %d total leads", len(records))
-    for code in TARGET_CODES + ["NOFC", "TAXDEED"]:
+    for code in TARGET_CODES + ["NOFC"]:
         cnt = sum(1 for r in records if r.get("doc_type") == code)
         if cnt:
             log.info("  %-12s %d", code, cnt)
