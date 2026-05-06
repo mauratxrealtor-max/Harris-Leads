@@ -667,7 +667,7 @@ class ClerkScraper:
                     "__doPostBack('ctl00$ContentPlaceHolder1$BtnNext', '')"
                 )
                 await page.wait_for_load_state("networkidle", timeout=30_000)
-                await asyncio.sleep(1)
+                await asyncio.sleep(3)  # Wait for UpdatePanel to re-render
                 page_num += 1
             except Exception as exc:
                 log.warning("  %s: pagination stopped at page %d: %s", doc_code, page_num, exc)
@@ -869,20 +869,24 @@ class ClerkScraper:
         if not nofc_recs:
             return records
 
-        # Build a date->owner map from NOTICE records (pre-foreclosure notices have owner names)
-        notice_by_date: dict[str, str] = {}
+        # Build a date->owner+grantee map from NOTICE records
+        notice_by_date: dict[str, dict] = {}
         for r in records:
             if r.get("doc_type") == "NOTICE" and r.get("owner") and r.get("filed"):
                 date = r["filed"][:10]
                 if date not in notice_by_date:
-                    notice_by_date[date] = r["owner"]
+                    notice_by_date[date] = {
+                        "owner":   r.get("owner", ""),
+                        "grantee": r.get("grantee", ""),
+                    }
 
         log.info("FRCL enrichment: matching %d foreclosure records against NOTICE records...", len(nofc_recs))
         enriched = 0
         for rec in nofc_recs:
             sale_date = rec.get("filed", "")[:10]
             if sale_date and sale_date in notice_by_date:
-                rec["owner"] = notice_by_date[sale_date]
+                rec["owner"]   = notice_by_date[sale_date]["owner"]
+                rec["grantee"] = notice_by_date[sale_date]["grantee"]
                 enriched += 1
 
         log.info("FRCL enrichment: matched %d/%d via NOTICE records", enriched, len(nofc_recs))
