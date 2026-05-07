@@ -633,19 +633,9 @@ class ClerkScraper:
     async def _paginate(self, page, doc_code: str) -> list[dict]:
         all_recs: list[dict] = []
         page_num = 1
-        seen_docs: set[str] = set()
 
         while True:
             recs = await self._parse_rp_page(page, doc_code)
-
-            # Detect loop
-            new_docs = [r.get("doc_num","") for r in recs if r.get("doc_num")]
-            if new_docs and all(d in seen_docs for d in new_docs):
-                log.warning("  %s: loop detected at page %d — stopping", doc_code, page_num)
-                break
-            for d in new_docs:
-                seen_docs.add(d)
-
             all_recs.extend(recs)
             log.info("  %s page %d: %d records (total so far: %d)",
                      doc_code, page_num, len(recs), len(all_recs))
@@ -654,26 +644,14 @@ class ClerkScraper:
                 log.warning("  %s: page limit reached, stopping", doc_code)
                 break
 
-            # Check for Next button
             next_el = page.locator('#ctl00_ContentPlaceHolder1_BtnNext')
             if await next_el.count() == 0:
                 log.info("  %s: no next page, done at page %d", doc_code, page_num)
                 break
             try:
-                # Get current first doc to verify page actually changes
-                current_first = recs[0].get("doc_num","") if recs else ""
-                # Force click bypasses overlay
                 await next_el.click(force=True, timeout=15_000)
-                # Wait for UpdatePanel to re-render by checking content changed
-                for _ in range(20):
-                    await asyncio.sleep(0.5)
-                    try:
-                        new_html = await page.content()
-                        if current_first and current_first not in new_html[:5000]:
-                            break  # page has changed
-                    except Exception:
-                        break
-                await page.wait_for_load_state("networkidle", timeout=20_000)
+                await page.wait_for_load_state("networkidle", timeout=30_000)
+                await asyncio.sleep(2)
                 page_num += 1
             except Exception as exc:
                 log.warning("  %s: pagination stopped at page %d: %s", doc_code, page_num, exc)
@@ -788,7 +766,16 @@ class ClerkScraper:
 
                 doc_code = "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
+                # Get the href link from the doc number cell for later enrichment
                 clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
+                try:
+                    link_el = frcl_row.locator("a").first
+                    if await link_el.count() > 0:
+                        href = await link_el.get_attribute("href")
+                        if href and "javascript" not in href.lower() and len(href) > 5:
+                            clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
+                except Exception:
+                    pass
 
                 records.append({
                     "doc_num":      doc_num,
@@ -855,43 +842,16 @@ class ClerkScraper:
         return []
 
     async def _enrich_frcl_record(self, page, rec: dict, parcel_db) -> dict:
-        """Click the FRCL doc link to get grantor name and legal description."""
+        """Visit the stored ViewECdocs URL to get grantor/grantee/legal."""
+        doc_url = rec.get("clerk_url", "")
         doc_num = rec.get("doc_num", "")
-        if not doc_num:
+
+        # Only visit ViewECdocs URLs — skip plain FRCL search URLs
+        if not doc_url or "ViewECdocs" not in doc_url:
             return rec
+
         try:
-            # Navigate back to FRCL page and find the link for this doc
-            # The clerk_url is set to the FRCL search page
-            # Instead navigate to FRCL page, search the month, find the row link
-            filed = rec.get("filed", "")
-            if not filed:
-                return rec
-
-            # Parse year/month from sale date
-            try:
-                dt = datetime.strptime(filed[:10], "%Y-%m-%d")
-                year, month = dt.year, dt.month
-            except Exception:
-                return rec
-
-            await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=30_000)
-            await asyncio.sleep(1)
-            await self._fill_frcl_form(page, year, month)
-            await asyncio.sleep(2)
-
-            # Find the link for this specific doc number
-            link_el = page.locator(f'tr:has(td:has-text("{doc_num}")) a').first
-            if await link_el.count() == 0:
-                return rec
-
-            href = await link_el.get_attribute("href")
-            if not href or "javascript" in href.lower():
-                return rec
-
-            full_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
-
-            # Navigate to the document detail page
-            await page.goto(full_url, wait_until="domcontentloaded", timeout=30_000)
+            await page.goto(doc_url, wait_until="domcontentloaded", timeout=30_000)
             await asyncio.sleep(1)
 
             html = await page.content()
@@ -901,8 +861,7 @@ class ClerkScraper:
             # Extract grantor
             grantors = []
             for m in re.finditer(
-                r'Grantor\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*$))',
-                text
+                r'Grantor\s*[:\-]\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor|Grantee|\s*$))', text
             ):
                 name = m.group(1).strip().strip("|").strip()
                 if name and len(name) > 1 and name not in grantors:
@@ -911,8 +870,7 @@ class ClerkScraper:
             # Extract grantee
             grantees = []
             for m in re.finditer(
-                r'Grantee\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*$))',
-                text
+                r'Grantee\s*[:\-]\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor|Grantee|\s*$))', text
             ):
                 name = m.group(1).strip().strip("|").strip()
                 if name and len(name) > 1 and name not in grantees:
@@ -920,10 +878,10 @@ class ClerkScraper:
 
             # Extract legal description
             legal = ""
-            for key in ("Legal:", "Legal Description:", "Desc:", "Lot:", "Block:"):
-                m = re.search(key + r'\s*(.{5,100}?)(?=\s*(?:Legal|Lot:|Block:|$))', text)
+            for key in ("Legal Description", "Legal", "Desc", "Lot", "Block"):
+                m = re.search(key + r'\s*[:\-]\s*(.{5,120}?)(?=\s*(?:Legal|Lot|Block|$))', text, re.I)
                 if m:
-                    legal = key + " " + m.group(1).strip()
+                    legal = m.group(1).strip()
                     break
 
             if grantors:
