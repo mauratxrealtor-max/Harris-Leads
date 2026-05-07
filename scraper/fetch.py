@@ -766,16 +766,22 @@ class ClerkScraper:
 
                 doc_code = "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
-                # Get the href link from the doc number cell for later enrichment
+                # Capture ViewECdocs URL from the href attribute directly
                 clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
                 try:
                     link_el = frcl_row.locator("a").first
                     if await link_el.count() > 0:
                         href = await link_el.get_attribute("href")
-                        if href and "javascript" not in href.lower() and len(href) > 5:
-                            clerk_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
-                except Exception:
-                    pass
+                        if href:
+                            log.info("  FRCL href for %s: %s", doc_num, href[:80])
+                        if href and "ViewECdocs" in href:
+                            clerk_url = href if href.startswith("http") else \
+                                f"https://www.cclerk.hctx.net{href if href.startswith('/') else '/' + href}"
+                        elif href and "javascript" not in href.lower() and len(href) > 10:
+                            clerk_url = href if href.startswith("http") else \
+                                f"https://www.cclerk.hctx.net{href if href.startswith('/') else '/' + href}"
+                except Exception as exc:
+                    log.debug("FRCL href capture error: %s", exc)
 
                 records.append({
                     "doc_num":      doc_num,
