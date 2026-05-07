@@ -774,12 +774,14 @@ class ClerkScraper:
                         href = await link_el.get_attribute("href")
                         if href:
                             log.info("  FRCL href for %s: %s", doc_num, href[:80])
-                        if href and "ViewECdocs" in href:
-                            clerk_url = href if href.startswith("http") else \
-                                f"https://www.cclerk.hctx.net{href if href.startswith('/') else '/' + href}"
-                        elif href and "javascript" not in href.lower() and len(href) > 10:
-                            clerk_url = href if href.startswith("http") else \
-                                f"https://www.cclerk.hctx.net{href if href.startswith('/') else '/' + href}"
+                        if href and len(href) > 10 and "javascript" not in href.lower():
+                            if href.startswith("http"):
+                                clerk_url = href
+                            elif href.startswith("/"):
+                                clerk_url = f"https://www.cclerk.hctx.net{href}"
+                            else:
+                                # Relative URL like "ViewECdocs.aspx?ID=..."
+                                clerk_url = f"https://www.cclerk.hctx.net/applications/websearch/{href}"
                 except Exception as exc:
                     log.debug("FRCL href capture error: %s", exc)
 
@@ -862,33 +864,38 @@ class ClerkScraper:
 
             html = await page.content()
             soup = BeautifulSoup(html, "lxml")
-            text = soup.get_text(" ", strip=True)
 
-            # Extract grantor
-            grantors = []
-            for m in re.finditer(
-                r'Grantor\s*[:\-]\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor|Grantee|\s*$))', text
-            ):
-                name = m.group(1).strip().strip("|").strip()
-                if name and len(name) > 1 and name not in grantors:
-                    grantors.append(name)
+            # ViewECdocs page has a table with label:value pairs
+            grantors, grantees, legal = [], [], ""
 
-            # Extract grantee
-            grantees = []
-            for m in re.finditer(
-                r'Grantee\s*[:\-]\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor|Grantee|\s*$))', text
-            ):
-                name = m.group(1).strip().strip("|").strip()
-                if name and len(name) > 1 and name not in grantees:
-                    grantees.append(name)
+            for row in soup.find_all("tr"):
+                cells = [td.get_text(" ", strip=True) for td in row.find_all(["td", "th"])]
+                if len(cells) < 2:
+                    continue
+                label = cells[0].lower().strip().rstrip(":")
+                value = cells[1].strip()
+                if not value:
+                    continue
+                if "grantor" in label and value not in grantors:
+                    grantors.append(value)
+                elif "grantee" in label and value not in grantees:
+                    grantees.append(value)
+                elif any(k in label for k in ("legal", "desc", "lot", "block")) and not legal:
+                    legal = value
 
-            # Extract legal description
-            legal = ""
-            for key in ("Legal Description", "Legal", "Desc", "Lot", "Block"):
-                m = re.search(key + r'\s*[:\-]\s*(.{5,120}?)(?=\s*(?:Legal|Lot|Block|$))', text, re.I)
-                if m:
-                    legal = m.group(1).strip()
-                    break
+            # Fallback: scan all text for Grantor/Grantee labels
+            if not grantors:
+                text = soup.get_text(" ", strip=True)
+                for m in re.finditer(r'Grantor\s*:\s*([A-Z][A-Z\s,\.]{2,50}?)(?=\s*(?:Grantor|Grantee|Desc|Legal|\d|$))', text):
+                    name = m.group(1).strip().rstrip(",")
+                    if name and name not in grantors:
+                        grantors.append(name)
+            if not grantees:
+                text = soup.get_text(" ", strip=True)
+                for m in re.finditer(r'Grantee\s*:\s*([A-Z][A-Z\s,\.]{2,50}?)(?=\s*(?:Grantor|Grantee|Desc|Legal|\d|$))', text):
+                    name = m.group(1).strip().rstrip(",")
+                    if name and name not in grantees:
+                        grantees.append(name)
 
             if grantors:
                 rec["owner"] = "; ".join(grantors)
