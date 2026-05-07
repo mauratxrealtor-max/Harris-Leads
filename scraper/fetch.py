@@ -654,15 +654,26 @@ class ClerkScraper:
                 log.warning("  %s: page limit reached, stopping", doc_code)
                 break
 
-            # Try BtnNext via force click (bypasses overlay)
+            # Check for Next button
             next_el = page.locator('#ctl00_ContentPlaceHolder1_BtnNext')
             if await next_el.count() == 0:
                 log.info("  %s: no next page, done at page %d", doc_code, page_num)
                 break
             try:
-                await next_el.click(force=True, timeout=10_000)
-                await page.wait_for_load_state("networkidle", timeout=30_000)
-                await asyncio.sleep(2)
+                # Get current first doc to verify page actually changes
+                current_first = recs[0].get("doc_num","") if recs else ""
+                # Force click bypasses overlay
+                await next_el.click(force=True, timeout=15_000)
+                # Wait for UpdatePanel to re-render by checking content changed
+                for _ in range(20):
+                    await asyncio.sleep(0.5)
+                    try:
+                        new_html = await page.content()
+                        if current_first and current_first not in new_html[:5000]:
+                            break  # page has changed
+                    except Exception:
+                        break
+                await page.wait_for_load_state("networkidle", timeout=20_000)
                 page_num += 1
             except Exception as exc:
                 log.warning("  %s: pagination stopped at page %d: %s", doc_code, page_num, exc)
@@ -844,16 +855,105 @@ class ClerkScraper:
         return []
 
     async def _enrich_frcl_record(self, page, rec: dict, parcel_db) -> dict:
-        """
-        Enrich a FRCL record using the HCAD ParcelLookup.
-        Strategy: Search HCAD by the doc number's linked RP record via FRCL file number.
-        Since FRCL doesn't expose owner names, we skip enrichment here —
-        enrichment happens later via HCAD lookup after owner is set.
-        """
+        """Click the FRCL doc link to get grantor name and legal description."""
+        doc_num = rec.get("doc_num", "")
+        if not doc_num:
+            return rec
+        try:
+            # Navigate back to FRCL page and find the link for this doc
+            # The clerk_url is set to the FRCL search page
+            # Instead navigate to FRCL page, search the month, find the row link
+            filed = rec.get("filed", "")
+            if not filed:
+                return rec
+
+            # Parse year/month from sale date
+            try:
+                dt = datetime.strptime(filed[:10], "%Y-%m-%d")
+                year, month = dt.year, dt.month
+            except Exception:
+                return rec
+
+            await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=30_000)
+            await asyncio.sleep(1)
+            await self._fill_frcl_form(page, year, month)
+            await asyncio.sleep(2)
+
+            # Find the link for this specific doc number
+            link_el = page.locator(f'tr:has(td:has-text("{doc_num}")) a').first
+            if await link_el.count() == 0:
+                return rec
+
+            href = await link_el.get_attribute("href")
+            if not href or "javascript" in href.lower():
+                return rec
+
+            full_url = href if href.startswith("http") else CLERK_BASE + "/" + href.lstrip("/")
+
+            # Navigate to the document detail page
+            await page.goto(full_url, wait_until="domcontentloaded", timeout=30_000)
+            await asyncio.sleep(1)
+
+            html = await page.content()
+            soup = BeautifulSoup(html, "lxml")
+            text = soup.get_text(" ", strip=True)
+
+            # Extract grantor
+            grantors = []
+            for m in re.finditer(
+                r'Grantor\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*$))',
+                text
+            ):
+                name = m.group(1).strip().strip("|").strip()
+                if name and len(name) > 1 and name not in grantors:
+                    grantors.append(name)
+
+            # Extract grantee
+            grantees = []
+            for m in re.finditer(
+                r'Grantee\s*:\s*([\w][^\|]{2,60}?)(?=\s*(?:Grantor\s*:|Grantee\s*:|\s*$))',
+                text
+            ):
+                name = m.group(1).strip().strip("|").strip()
+                if name and len(name) > 1 and name not in grantees:
+                    grantees.append(name)
+
+            # Extract legal description
+            legal = ""
+            for key in ("Legal:", "Legal Description:", "Desc:", "Lot:", "Block:"):
+                m = re.search(key + r'\s*(.{5,100}?)(?=\s*(?:Legal|Lot:|Block:|$))', text)
+                if m:
+                    legal = key + " " + m.group(1).strip()
+                    break
+
+            if grantors:
+                rec["owner"] = "; ".join(grantors)
+            if grantees:
+                rec["grantee"] = "; ".join(grantees)
+            if legal:
+                rec["legal"] = legal
+            if rec.get("owner"):
+                log.info("  FRCL xref %s -> %s", doc_num, rec["owner"][:40])
+
+        except Exception as exc:
+            log.debug("FRCL xref %s failed: %s", doc_num, exc)
         return rec
 
     async def enrich_frcl_records(self, page, records: list[dict], parcel_db=None) -> list[dict]:
-        """FRCL records have no owner names from the portal — leave blank."""
+        """Click each FRCL doc link to get grantor/grantee/legal from ViewECdocs page."""
+        if page is None:
+            return records
+        nofc_recs = [r for r in records if r.get("doc_type") == "NOFC" and not r.get("owner")]
+        if not nofc_recs:
+            return records
+        log.info("FRCL enrichment: looking up %d foreclosure records via doc links...", len(nofc_recs))
+        enriched = 0
+        for rec in nofc_recs:
+            rec = await self._enrich_frcl_record(page, rec, parcel_db)
+            if rec.get("owner"):
+                enriched += 1
+            await asyncio.sleep(1)
+        log.info("FRCL enrichment: enriched %d/%d records", enriched, len(nofc_recs))
         return records
 
     async def fetch_frcl_on_page(self, page) -> list[dict]:
@@ -1132,6 +1232,7 @@ async def main():
     log.info("Scraping %d chunks of %d days (delay: %ds each)", len(chunks), CHUNK_DAYS, CHUNK_DELAY)
 
     all_raw: list[dict] = []
+    pw_page = None  # saved for FRCL enrichment
 
     if HAS_PW:
         async with async_playwright() as pw:
@@ -1165,8 +1266,8 @@ async def main():
                         pass
                     await asyncio.sleep(CHUNK_DELAY)
 
-            # FRCL scraping — NOFC and TAXDEED
-            log.info("--- FRCL scraping: NOFC and TAXDEED ---")
+            # FRCL scraping — NOFC foreclosures
+            log.info("--- FRCL scraping: NOFC ---")
             try:
                 frcl_scraper = ClerkScraper(date_from, date_to)
                 frcl_recs = await frcl_scraper.fetch_frcl_on_page(page)
@@ -1176,6 +1277,7 @@ async def main():
             except Exception as exc:
                 log.warning("FRCL scrape failed: %s", exc)
 
+            pw_page = page  # save reference for FRCL enrichment after dedup
             await browser.close()
     else:
         log.warning("Playwright unavailable - using static scraper.")
@@ -1195,9 +1297,27 @@ async def main():
     records = _deduplicate(records)
     log.info("After dedup: %d", len(records))
 
-    # Enrich NOFC records using NOTICE records (same sale dates share owner names)
-    frcl_scraper_temp = ClerkScraper(date_from, date_to)
-    records = await frcl_scraper_temp.enrich_frcl_records(None, records)
+    # Enrich NOFC records by clicking doc links to get grantor/grantee
+    nofc_count = sum(1 for r in records if r.get("doc_type") == "NOFC" and not r.get("owner"))
+    if HAS_PW and nofc_count > 0:
+        log.info("Opening browser for FRCL enrichment (%d records)...", nofc_count)
+        try:
+            async with async_playwright() as pw2:
+                browser2 = await pw2.chromium.launch(
+                    headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"]
+                )
+                context2 = await browser2.new_context(
+                    user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                               "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    viewport={"width": 1280, "height": 900},
+                )
+                enrich_page = await context2.new_page()
+                enrich_page.set_default_timeout(30_000)
+                frcl_enricher = ClerkScraper(date_from, date_to)
+                records = await frcl_enricher.enrich_frcl_records(enrich_page, records)
+                await browser2.close()
+        except Exception as exc:
+            log.warning("FRCL enrichment failed: %s", exc)
 
     log.info("Loading clerk doc number lookup...")
     clerk_db = ClerkLookup()
