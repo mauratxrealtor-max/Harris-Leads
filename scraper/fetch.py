@@ -854,8 +854,11 @@ class ClerkScraper:
         doc_url = rec.get("clerk_url", "")
         doc_num = rec.get("doc_num", "")
 
+        log.info("  FRCL enrich %s: url=%s", doc_num, doc_url[:80] if doc_url else "EMPTY")
+
         # Only visit ViewECdocs URLs — skip plain FRCL search URLs
         if not doc_url or "ViewECdocs" not in doc_url:
+            log.info("  FRCL enrich %s: skipped (no ViewECdocs in url)", doc_num)
             return rec
 
         try:
