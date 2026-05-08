@@ -727,12 +727,34 @@ class ClerkScraper:
         log.info("  FRCL Search btn clicked")
         await page.wait_for_load_state("networkidle", timeout=45_000)
 
+    @staticmethod
+    def _detect_frcl_columns(header_cells: list[str]) -> dict[str, int]:
+        """
+        Map FRCL table column names to their index positions.
+        The FRCL_R.aspx table header varies but typically includes:
+        File Number | Sale Date | File Date | Pages | Trustor | Trustee | Property Address | ...
+        """
+        mapping: dict[str, int] = {}
+        for i, cell in enumerate(header_cells):
+            c = cell.lower().strip()
+            if not mapping.get("doc_num") and any(k in c for k in ("file number", "file no", "doc")):
+                mapping["doc_num"] = i
+            elif not mapping.get("sale_date") and any(k in c for k in ("sale date", "sale")):
+                mapping["sale_date"] = i
+            elif not mapping.get("file_date") and any(k in c for k in ("file date", "filed")):
+                mapping["file_date"] = i
+            elif not mapping.get("trustor") and any(k in c for k in ("trustor", "grantor", "debtor", "owner", "borrower")):
+                mapping["trustor"] = i
+            elif not mapping.get("trustee") and any(k in c for k in ("trustee", "grantee", "substitute")):
+                mapping["trustee"] = i
+            elif not mapping.get("address") and any(k in c for k in ("address", "property", "legal", "location")):
+                mapping["address"] = i
+        return mapping
+
     async def _parse_frcl_page(self, page, year: int, month: int) -> list[dict]:
         """
         Parse FRCL_R.aspx results using Playwright directly.
-        Confirmed column structure: Doc ID | Sale Date | File Date | Pgs
-        Doc IDs look like FRCL-2025-7269.
-        Uses Playwright row locator to bypass BeautifulSoup table selection issues.
+        Reads ALL columns including Trustor (grantor/owner) and address if present.
         """
         records: list[dict] = []
 
@@ -748,16 +770,53 @@ class ClerkScraper:
             log.warning("  FRCL %04d-%02d: no FRCL- rows found", year, month)
             return records
 
+        # Try to detect column layout from the header row
+        col_map: dict[str, int] = {}
+        try:
+            header_rows = await page.locator("tr:has(th)").all()
+            if header_rows:
+                header_cells = await header_rows[0].locator("th").all_text_contents()
+                col_map = self._detect_frcl_columns(header_cells)
+                log.info("  FRCL column map: %s", col_map)
+        except Exception as exc:
+            log.debug("  FRCL header detection failed: %s", exc)
+
         for frcl_row in frcl_rows:
             try:
                 cells_text = await frcl_row.locator("td").all_text_contents()
                 if len(cells_text) < 3:
                     continue
 
-                # Col 0 is blank/icon, Col 1=Doc ID, Col 2=Sale Date, Col 3=File Date
-                doc_num   = cells_text[1].strip() if len(cells_text) > 1 else ""
-                sale_date = cells_text[2].strip() if len(cells_text) > 2 else ""
-                file_date = cells_text[3].strip() if len(cells_text) > 3 else ""
+                # Log full row on first record to help diagnose column layout
+                if not records:
+                    log.info("  FRCL first row cells (%d): %s",
+                             len(cells_text),
+                             " | ".join(c[:20] for c in cells_text))
+
+                # Use detected column map if available, otherwise fall back to positional
+                def get_col(key: str, fallback: int) -> str:
+                    idx = col_map.get(key, fallback)
+                    return cells_text[idx].strip() if idx < len(cells_text) else ""
+
+                doc_num   = get_col("doc_num", 1)
+                sale_date = get_col("sale_date", 2)
+                file_date = get_col("file_date", 3)
+                trustor   = get_col("trustor", -1)   # property owner / grantor
+                trustee   = get_col("trustee", -1)   # foreclosing party
+                prop_addr = get_col("address", -1)
+
+                # If no column map, scan all cells for a name-like value
+                if not trustor and not col_map:
+                    for cell in cells_text[4:]:
+                        c = cell.strip()
+                        # Name-like: mostly letters, reasonable length, not a date or number
+                        if (c and len(c) > 4 and len(c) < 80
+                                and not re.match(r'^\d', c)
+                                and not re.match(r'\d{2}/\d{2}/\d{4}', c)
+                                and re.search(r'[A-Za-z]{3,}', c)):
+                            trustor = c
+                            log.debug("  FRCL trustor guessed from cell: %s", c[:40])
+                            break
 
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
                     continue
@@ -792,11 +851,13 @@ class ClerkScraper:
                     "filed":        filed,
                     "cat":          cat,
                     "cat_label":    cat_label,
-                    "owner":        "",
+                    # trustor = property owner (grantor in foreclosure context)
+                    # grantee = foreclosing trustee — left blank, filled by ViewECdocs
+                    "owner":        trustor,
                     "grantee":      "",
                     "amount":       None,
                     "legal":        "",
-                    "prop_address": "",
+                    "prop_address": prop_addr,
                     "prop_city":    "Houston",
                     "prop_state":   "TX",
                     "prop_zip":     "",
@@ -808,6 +869,9 @@ class ClerkScraper:
                     "flags":        [],
                     "score":        0,
                 })
+                if trustor:
+                    log.info("  FRCL list row %s -> trustor=%s addr=%s",
+                             doc_num, trustor[:35], prop_addr[:35] if prop_addr else "")
             except Exception as exc:
                 log.debug("FRCL record build error: %s", exc)
 
