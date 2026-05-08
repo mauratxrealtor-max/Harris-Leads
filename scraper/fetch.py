@@ -1149,7 +1149,9 @@ def export_ghl_csv(records: list[dict], path: Path):
         w = csv.DictWriter(fh, fieldnames=columns)
         w.writeheader()
         for r in records:
-            first, last = split_name(r.get("owner", ""))
+            # Use grantee (property owner) for name fields; fall back to grantor
+            name_source = r.get("grantee", "") or r.get("owner", "")
+            first, last = split_name(name_source)
             w.writerow({
                 "First Name":             first,
                 "Last Name":              last,
@@ -1322,7 +1324,8 @@ async def main():
     enriched_parcel = 0
     for rec in records:
         doc_num = rec.get("doc_num", "")
-        owner   = rec.get("owner", "")
+        owner   = rec.get("owner", "")    # grantor
+        grantee = rec.get("grantee", "")  # current property owner (who we want address for)
 
         # 1. Try exact clerk lookup by doc number (fast, accurate)
         hit = clerk_db.lookup(doc_num)
@@ -1335,9 +1338,12 @@ async def main():
             enriched_clerk += 1
             continue
 
-        # 2. Fall back to fuzzy HCAD name matching
-        if owner:
-            hit2 = parcel_db.lookup(owner)
+        # 2. Fall back to fuzzy HCAD name matching.
+        #    Always look up by GRANTEE first (they are the property owner whose
+        #    address we want). Only fall back to grantor if grantee is blank.
+        lookup_name = grantee if grantee else owner
+        if lookup_name:
+            hit2 = parcel_db.lookup(lookup_name)
             if hit2 and hit2.get("prop_address"):
                 rec.update({k: v for k, v in hit2.items() if v})
                 enriched_parcel += 1
