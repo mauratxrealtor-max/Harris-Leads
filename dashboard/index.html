@@ -115,8 +115,8 @@
           <th onclick="sortBy('score')">Score</th>
           <th onclick="sortBy('doc_type')">Type</th>
           <th onclick="sortBy('filed')">Filed</th>
-          <th onclick="sortBy('owner')">Owner (Grantor)</th>
-          <th onclick="sortBy('grantee')">Grantee</th>
+          <th onclick="sortBy('grantee')">Grantee (Owner)</th>
+          <th onclick="sortBy('owner')">Grantor</th>
           <th onclick="sortBy('prop_address')">Property Address</th>
           <th onclick="sortBy('mail_address')">Mailing Address</th>
           <th>Flags</th>
@@ -187,7 +187,7 @@ function applyFilters() {
   if(groupOwner){
     const m=new Map();
     for(const r of base){
-      const k=(r.owner||'').toUpperCase().trim();
+      const k=(r.grantee||r.owner||'').toUpperCase().trim();
       if(!m.has(k)){m.set(k,{...r,_count:1});}
       else{
         const e=m.get(k); e._count++;
@@ -214,7 +214,7 @@ function clearFilters(){
 function sortBy(col){
   if(sortCol===col) sortDir=sortDir==='asc'?'desc':'asc'; else{sortCol=col;sortDir='desc';}
   document.querySelectorAll('th').forEach(th=>th.classList.remove('sort-asc','sort-desc'));
-  const headers=['score','doc_type','filed','owner','grantee','prop_address','mail_address','','doc_num'];
+  const headers=['score','doc_type','filed','grantee','owner','prop_address','mail_address','','doc_num'];
   const idx=headers.indexOf(col);
   if(idx>=0) document.querySelectorAll('#main-table thead th')[idx]?.classList.add(sortDir==='asc'?'sort-asc':'sort-desc');
   sortRecords(); renderPage();
@@ -262,8 +262,8 @@ function rowHTML(r,idx){
     <td><span class="score ${scoreClass(r.score)}">${r.score}</span></td>
     <td><span class="pill">${r.doc_type}</span></td>
     <td>${r.filed||'<span class="empty">—</span>'}</td>
-    <td title="${r.owner||''}">${trunc(r.owner,30)}${badge}</td>
-    <td title="${r.grantee||''}">${trunc(r.grantee,25)}</td>
+    <td title="${r.grantee||''}">${trunc(r.grantee,30)}${badge}</td>
+    <td title="${r.owner||''}">${trunc(r.owner,25)}</td>
     <td>${fmtAddr(r.prop_address,r.prop_city,r.prop_zip)}</td>
     <td>${fmtAddr(r.mail_address,r.mail_city,r.mail_zip)}</td>
     <td>${flagHTML(r.flags)}</td>
@@ -289,7 +289,7 @@ function showDetail(localIdx){
   const fields=[
     ['Document #',r.doc_num],['Doc Type',`${r.doc_type} · ${r.cat_label}`],
     ['Filed Date',r.filed],['Score',r.score],
-    ['Owner/Grantor',r.owner],['Grantee',r.grantee],
+    ['Grantee (Owner)',r.grantee],['Grantor (Filer)',r.owner],
     ['Amount',r.amount?'$'+Number(r.amount).toLocaleString():'—'],
     ['Property Address',[r.prop_address,r.prop_city,r.prop_state,r.prop_zip].filter(Boolean).join(', ')],
     ['Mailing Address',[r.mail_address,r.mail_city,r.mail_state,r.mail_zip].filter(Boolean).join(', ')],
