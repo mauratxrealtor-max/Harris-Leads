@@ -863,53 +863,19 @@ class ClerkScraper:
             return rec
 
         try:
-            await page.goto(doc_url, wait_until="domcontentloaded", timeout=30_000)
-            await asyncio.sleep(1)
-
+            await page.goto(doc_url, wait_until="networkidle", timeout=30_000)
+            await asyncio.sleep(1.5)
             html = await page.content()
-            soup = BeautifulSoup(html, "lxml")
-
-            # ViewECdocs page has a table with label:value pairs
-            grantors, grantees, legal = [], [], ""
-
-            for row in soup.find_all("tr"):
-                cells = [td.get_text(" ", strip=True) for td in row.find_all(["td", "th"])]
-                if len(cells) < 2:
-                    continue
-                label = cells[0].lower().strip().rstrip(":")
-                value = cells[1].strip()
-                if not value:
-                    continue
-                if "grantor" in label and value not in grantors:
-                    grantors.append(value)
-                elif "grantee" in label and value not in grantees:
-                    grantees.append(value)
-                elif any(k in label for k in ("legal", "desc", "lot", "block")) and not legal:
-                    legal = value
-
-            # Fallback: scan all text for Grantor/Grantee labels
-            if not grantors:
-                text = soup.get_text(" ", strip=True)
-                for m in re.finditer(r'Grantor\s*:\s*([A-Z][A-Z\s,\.]{2,50}?)(?=\s*(?:Grantor|Grantee|Desc|Legal|\d|$))', text):
-                    name = m.group(1).strip().rstrip(",")
-                    if name and name not in grantors:
-                        grantors.append(name)
-            if not grantees:
-                text = soup.get_text(" ", strip=True)
-                for m in re.finditer(r'Grantee\s*:\s*([A-Z][A-Z\s,\.]{2,50}?)(?=\s*(?:Grantor|Grantee|Desc|Legal|\d|$))', text):
-                    name = m.group(1).strip().rstrip(",")
-                    if name and name not in grantees:
-                        grantees.append(name)
-
+            grantors, grantees, legal = self._parse_viewecdocs_html(html)
             if grantors:
                 rec["owner"] = "; ".join(grantors)
             if grantees:
                 rec["grantee"] = "; ".join(grantees)
             if legal:
                 rec["legal"] = legal
-            if rec.get("owner"):
-                log.info("  FRCL xref %s -> %s", doc_num, rec["owner"][:40])
-
+            if rec.get("owner") or rec.get("grantee"):
+                log.info("  FRCL xref %s -> grantor=%s | grantee=%s",
+                         doc_num, (rec.get("owner") or "")[:35], (rec.get("grantee") or "")[:35])
         except Exception as exc:
             log.debug("FRCL xref %s failed: %s", doc_num, exc)
         return rec
@@ -931,6 +897,76 @@ class ClerkScraper:
         log.info("FRCL enrichment: enriched %d/%d records", enriched, len(nofc_recs))
         return records
 
+    @staticmethod
+    def _parse_viewecdocs_html(html: str) -> tuple[list, list, str]:
+        """
+        Extract grantors, grantees, and legal description from a ViewECdocs page.
+        Handles both table-based (tr/td) and label/value div/span layouts.
+        Returns (grantors, grantees, legal).
+        """
+        soup = BeautifulSoup(html, "lxml")
+        grantors, grantees, legal = [], [], ""
+
+        # Strategy 1: tr/td table rows with label in first cell
+        for row in soup.find_all("tr"):
+            cells = [td.get_text(" ", strip=True) for td in row.find_all(["td", "th"])]
+            if len(cells) < 2:
+                continue
+            label = cells[0].lower().strip().rstrip(":")
+            value = cells[1].strip()
+            if not value or len(value) < 2:
+                continue
+            if "grantor" in label and value not in grantors:
+                grantors.append(value)
+            elif "grantee" in label and value not in grantees:
+                grantees.append(value)
+            elif any(k in label for k in ("legal", "desc", "lot", "block")) and not legal:
+                legal = value
+
+        # Strategy 2: full-text regex scan (catches span/div label layouts)
+        if not grantors or not grantees:
+            full_text = soup.get_text(" ", strip=True)
+            if not grantors:
+                for m in re.finditer(
+                    r'Grantor\s*[:\-]\s*([A-Z][A-Z0-9\s,\.\-\']{2,60}?)(?=\s*(?:Grantor|Grantee|Legal|Desc|Lot|Block|Sale|File|\d{2}/|\Z))',
+                    full_text, re.IGNORECASE
+                ):
+                    name = m.group(1).strip().rstrip(",").strip()
+                    if name and len(name) > 2 and name not in grantors:
+                        grantors.append(name)
+            if not grantees:
+                for m in re.finditer(
+                    r'Grantee\s*[:\-]\s*([A-Z][A-Z0-9\s,\.\-\']{2,60}?)(?=\s*(?:Grantor|Grantee|Legal|Desc|Lot|Block|Sale|File|\d{2}/|\Z))',
+                    full_text, re.IGNORECASE
+                ):
+                    name = m.group(1).strip().rstrip(",").strip()
+                    if name and len(name) > 2 and name not in grantees:
+                        grantees.append(name)
+            if not legal:
+                m = re.search(
+                    r'(?:Legal|Description|Desc)\s*[:\-]\s*(.{5,120}?)(?=\s*(?:Grantor|Grantee|Sale|File|\Z))',
+                    full_text, re.IGNORECASE
+                )
+                if m:
+                    legal = m.group(1).strip()
+
+        # Strategy 3: look for labelled spans/divs
+        if not grantors or not grantees:
+            for el in soup.find_all(["span", "div", "td", "th", "label"]):
+                el_text = el.get_text(" ", strip=True).lower()
+                if not el_text:
+                    continue
+                sib = el.find_next_sibling()
+                sib_text = sib.get_text(" ", strip=True) if sib else ""
+                if not sib_text or len(sib_text) < 2:
+                    continue
+                if "grantor" in el_text and sib_text not in grantors:
+                    grantors.append(sib_text)
+                elif "grantee" in el_text and sib_text not in grantees:
+                    grantees.append(sib_text)
+
+        return grantors, grantees, legal
+
     async def fetch_frcl_on_page(self, page) -> list[dict]:
         months = self._months_in_range(self.date_from, self.date_to)
         log.info("FRCL scraping %d month(s): %s",
@@ -939,44 +975,35 @@ class ClerkScraper:
         for i, (year, month) in enumerate(months):
             recs = await self._scrape_frcl_month(page, year, month)
             log.info("  FRCL %04d-%02d -> %d records", year, month, len(recs))
-            # Enrich immediately while session is still active
+            enriched_count = 0
             for rec in recs:
                 doc_url = rec.get("clerk_url", "")
                 if "ViewECdocs" not in doc_url:
                     continue
                 try:
-                    await page.goto(doc_url, wait_until="domcontentloaded", timeout=20_000)
-                    await asyncio.sleep(0.5)
+                    # networkidle ensures JS-rendered content is fully loaded
+                    await page.goto(doc_url, wait_until="networkidle", timeout=30_000)
+                    await asyncio.sleep(1.5)
                     html = await page.content()
-                    soup = BeautifulSoup(html, "lxml")
-                    grantors, grantees, legal = [], [], ""
-                    for row in soup.find_all("tr"):
-                        cells = [td.get_text(" ", strip=True) for td in row.find_all(["td","th"])]
-                        if len(cells) < 2:
-                            continue
-                        label = cells[0].lower().strip().rstrip(":")
-                        value = cells[1].strip()
-                        if not value or len(value) < 2:
-                            continue
-                        if "grantor" in label and value not in grantors:
-                            grantors.append(value)
-                        elif "grantee" in label and value not in grantees:
-                            grantees.append(value)
-                        elif any(k in label for k in ("legal","desc","lot","block")) and not legal:
-                            legal = value
+                    grantors, grantees, legal = self._parse_viewecdocs_html(html)
                     if grantors:
                         rec["owner"] = "; ".join(grantors)
                     if grantees:
                         rec["grantee"] = "; ".join(grantees)
                     if legal:
                         rec["legal"] = legal
-                    if rec.get("owner"):
-                        log.info("  FRCL xref %s -> %s", rec["doc_num"], rec["owner"][:40])
+                    if rec.get("owner") or rec.get("grantee"):
+                        enriched_count += 1
+                        log.info("  FRCL xref %s -> grantor=%s | grantee=%s",
+                                 rec["doc_num"],
+                                 (rec.get("owner") or "")[:35],
+                                 (rec.get("grantee") or "")[:35])
                 except Exception as exc:
-                    log.debug("  FRCL xref %s failed: %s", rec.get("doc_num","?"), exc)
+                    log.debug("  FRCL xref %s failed: %s", rec.get("doc_num", "?"), exc)
+            log.info("  FRCL %04d-%02d enriched %d/%d via ViewECdocs",
+                     year, month, enriched_count, len(recs))
             all_records.extend(recs)
             if i < len(months) - 1:
-                # Go back to FRCL page for next month
                 await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=20_000)
                 await asyncio.sleep(2)
         return all_records
