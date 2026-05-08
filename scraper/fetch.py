@@ -781,12 +781,11 @@ class ClerkScraper:
                     _headers = [th.get_text(" ", strip=True) for th in _tbl.find_all("th")]
                     log.info("  FRCL TABLE HEADERS (%d): %s", len(_headers),
                              " | ".join(f"[{i}]{h[:25]}" for i, h in enumerate(_headers)))
-                    _first_data = _tbl.find("tr", lambda t: "FRCL-" in t.get_text() if t else False)
-                    if not _first_data:
-                        for _tr in _tbl.find_all("tr"):
-                            if "FRCL-" in _tr.get_text():
-                                _first_data = _tr
-                                break
+                    _first_data = None
+                    for _tr in _tbl.find_all("tr"):
+                        if "FRCL-" in _tr.get_text():
+                            _first_data = _tr
+                            break
                     if _first_data:
                         _dcells = [td.get_text(" ", strip=True) for td in _first_data.find_all("td")]
                         log.info("  FRCL FIRST DATA ROW (%d cells): %s", len(_dcells),
@@ -810,14 +809,17 @@ class ClerkScraper:
 
         for frcl_row in frcl_rows:
             try:
-                cells_text = await frcl_row.locator("td").all_text_contents()
-                if len(cells_text) < 3:
+                # Use evaluate to get innerText of each td (catches nested <a>, <span> text)
+                cells_text = await frcl_row.evaluate(
+                    "row => Array.from(row.querySelectorAll('td')).map(td => td.innerText.trim())"
+                )
+                if not cells_text or len(cells_text) < 3:
                     continue
 
                 # Always log every row's full cell contents at INFO level
                 log.info("  FRCL row cells (%d): %s",
                          len(cells_text),
-                         " | ".join(f"[{i}]{c[:20]}" for i, c in enumerate(cells_text)))
+                         " | ".join(f"[{i}]{c[:25]}" for i, c in enumerate(cells_text)))
 
                 # Use detected column map; fallback of -1 is intentionally disabled
                 def get_col(key: str, fallback: int) -> str:
@@ -844,8 +846,16 @@ class ClerkScraper:
                             log.info("  FRCL trustor fallback col[%d]: %s", ci, c[:40])
                             break
 
+                # Fallback: extract doc_num from href if cells_text didn't give it
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
-                    continue
+                    # Try to find FRCL- pattern anywhere in the row cells
+                    all_text = " ".join(cells_text)
+                    m = re.search(r'(FRCL-\d{4}-\d+)', all_text)
+                    if m:
+                        doc_num = m.group(1)
+                        log.info("  FRCL doc_num rescued from row text: %s", doc_num)
+                    else:
+                        continue
 
                 # Use sale date as filed date (more relevant for motivated sellers)
                 filed = _parse_date(sale_date) or _parse_date(file_date)
