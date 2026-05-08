@@ -1076,15 +1076,21 @@ class ClerkScraper:
             recs = await self._scrape_frcl_month(page, year, month)
             log.info("  FRCL %04d-%02d -> %d records", year, month, len(recs))
             enriched_count = 0
-            for rec in recs:
+            for rec_idx, rec in enumerate(recs):
                 doc_url = rec.get("clerk_url", "")
                 if "ViewECdocs" not in doc_url:
                     continue
                 try:
-                    # networkidle ensures JS-rendered content is fully loaded
-                    await page.goto(doc_url, wait_until="networkidle", timeout=30_000)
-                    await asyncio.sleep(1.5)
+                    log.info("  FRCL xref attempting %s -> %s", rec["doc_num"], doc_url[:80])
+                    resp = await page.goto(doc_url, wait_until="domcontentloaded", timeout=30_000)
+                    await asyncio.sleep(2)
+                    status = resp.status if resp else "?"
+                    final_url = page.url
                     html = await page.content()
+                    page_text = await page.evaluate("() => document.body ? document.body.innerText : ''")
+                    log.info("  FRCL xref %s: status=%s finalUrl=%s bodyLen=%d bodySnip=%s",
+                             rec["doc_num"], status, final_url[:60], len(html),
+                             page_text[:120].replace("\n", " "))
                     grantors, grantees, legal = self._parse_viewecdocs_html(html)
                     if grantors:
                         rec["owner"] = "; ".join(grantors)
@@ -1098,8 +1104,14 @@ class ClerkScraper:
                                  rec["doc_num"],
                                  (rec.get("owner") or "")[:35],
                                  (rec.get("grantee") or "")[:35])
+                    else:
+                        log.info("  FRCL xref %s: page loaded but NO grantors/grantees found", rec["doc_num"])
+                    # Only attempt first 3 records to keep log manageable
+                    if rec_idx >= 2:
+                        log.info("  FRCL xref: stopping diagnostic after 3 records")
+                        break
                 except Exception as exc:
-                    log.debug("  FRCL xref %s failed: %s", rec.get("doc_num", "?"), exc)
+                    log.info("  FRCL xref %s EXCEPTION: %s", rec.get("doc_num", "?"), exc)
             log.info("  FRCL %04d-%02d enriched %d/%d via ViewECdocs",
                      year, month, enriched_count, len(recs))
             all_records.extend(recs)
