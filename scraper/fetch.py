@@ -579,9 +579,10 @@ class ClerkScraper:
                     name = m.group(1).strip().strip("|").strip()
                     if name and len(name) > 1 and name not in grantees:
                         grantees.append(name)
+                        break  # Take only first grantee to avoid duplicates
 
                 grantor = "; ".join(grantors)
-                grantee = "; ".join(grantees)
+                grantee = grantees[0] if grantees else ""
 
                 legal_text = ""
                 for key in ("Desc:", "Comment:", "Lot:", "Block:", "Abstract:", "Sec:"):
@@ -938,8 +939,45 @@ class ClerkScraper:
         for i, (year, month) in enumerate(months):
             recs = await self._scrape_frcl_month(page, year, month)
             log.info("  FRCL %04d-%02d -> %d records", year, month, len(recs))
+            # Enrich immediately while session is still active
+            for rec in recs:
+                doc_url = rec.get("clerk_url", "")
+                if "ViewECdocs" not in doc_url:
+                    continue
+                try:
+                    await page.goto(doc_url, wait_until="domcontentloaded", timeout=20_000)
+                    await asyncio.sleep(0.5)
+                    html = await page.content()
+                    soup = BeautifulSoup(html, "lxml")
+                    grantors, grantees, legal = [], [], ""
+                    for row in soup.find_all("tr"):
+                        cells = [td.get_text(" ", strip=True) for td in row.find_all(["td","th"])]
+                        if len(cells) < 2:
+                            continue
+                        label = cells[0].lower().strip().rstrip(":")
+                        value = cells[1].strip()
+                        if not value or len(value) < 2:
+                            continue
+                        if "grantor" in label and value not in grantors:
+                            grantors.append(value)
+                        elif "grantee" in label and value not in grantees:
+                            grantees.append(value)
+                        elif any(k in label for k in ("legal","desc","lot","block")) and not legal:
+                            legal = value
+                    if grantors:
+                        rec["owner"] = "; ".join(grantors)
+                    if grantees:
+                        rec["grantee"] = "; ".join(grantees)
+                    if legal:
+                        rec["legal"] = legal
+                    if rec.get("owner"):
+                        log.info("  FRCL xref %s -> %s", rec["doc_num"], rec["owner"][:40])
+                except Exception as exc:
+                    log.debug("  FRCL xref %s failed: %s", rec.get("doc_num","?"), exc)
             all_records.extend(recs)
             if i < len(months) - 1:
+                # Go back to FRCL page for next month
+                await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=20_000)
                 await asyncio.sleep(2)
         return all_records
 
@@ -1242,6 +1280,7 @@ async def main():
 
             # FRCL scraping — NOFC foreclosures
             log.info("--- FRCL scraping: NOFC ---")
+            frcl_recs = []
             try:
                 frcl_scraper = ClerkScraper(date_from, date_to)
                 frcl_recs = await frcl_scraper.fetch_frcl_on_page(page)
@@ -1251,7 +1290,7 @@ async def main():
             except Exception as exc:
                 log.warning("FRCL scrape failed: %s", exc)
 
-            pw_page = page  # save reference for FRCL enrichment after dedup
+            pw_page = page
             await browser.close()
     else:
         log.warning("Playwright unavailable - using static scraper.")
@@ -1270,28 +1309,6 @@ async def main():
 
     records = _deduplicate(records)
     log.info("After dedup: %d", len(records))
-
-    # Enrich NOFC records by clicking doc links to get grantor/grantee
-    nofc_count = sum(1 for r in records if r.get("doc_type") == "NOFC" and not r.get("owner"))
-    if HAS_PW and nofc_count > 0:
-        log.info("Opening browser for FRCL enrichment (%d records)...", nofc_count)
-        try:
-            async with async_playwright() as pw2:
-                browser2 = await pw2.chromium.launch(
-                    headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"]
-                )
-                context2 = await browser2.new_context(
-                    user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                               "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                    viewport={"width": 1280, "height": 900},
-                )
-                enrich_page = await context2.new_page()
-                enrich_page.set_default_timeout(30_000)
-                frcl_enricher = ClerkScraper(date_from, date_to)
-                records = await frcl_enricher.enrich_frcl_records(enrich_page, records)
-                await browser2.close()
-        except Exception as exc:
-            log.warning("FRCL enrichment failed: %s", exc)
 
     log.info("Loading clerk doc number lookup...")
     clerk_db = ClerkLookup()
