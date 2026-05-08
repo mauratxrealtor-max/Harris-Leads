@@ -770,12 +770,39 @@ class ClerkScraper:
             log.warning("  FRCL %04d-%02d: no FRCL- rows found", year, month)
             return records
 
-        # Try to detect column layout from the header row
+        # --- DIAGNOSTIC: dump all table headers so we can map columns exactly ---
+        try:
+            full_html = await page.content()
+            from bs4 import BeautifulSoup as _BS
+            _soup = _BS(full_html, "lxml")
+            for _tbl in _soup.find_all("table"):
+                _tbl_text = _tbl.get_text(" ", strip=True)
+                if "FRCL-" in _tbl_text:
+                    _headers = [th.get_text(" ", strip=True) for th in _tbl.find_all("th")]
+                    log.info("  FRCL TABLE HEADERS (%d): %s", len(_headers),
+                             " | ".join(f"[{i}]{h[:25]}" for i, h in enumerate(_headers)))
+                    _first_data = _tbl.find("tr", lambda t: "FRCL-" in t.get_text() if t else False)
+                    if not _first_data:
+                        for _tr in _tbl.find_all("tr"):
+                            if "FRCL-" in _tr.get_text():
+                                _first_data = _tr
+                                break
+                    if _first_data:
+                        _dcells = [td.get_text(" ", strip=True) for td in _first_data.find_all("td")]
+                        log.info("  FRCL FIRST DATA ROW (%d cells): %s", len(_dcells),
+                                 " | ".join(f"[{i}]{c[:25]}" for i, c in enumerate(_dcells)))
+                    break
+        except Exception as _exc:
+            log.debug("  FRCL diagnostic dump failed: %s", _exc)
+
+        # Detect column layout from header row
         col_map: dict[str, int] = {}
         try:
             header_rows = await page.locator("tr:has(th)").all()
             if header_rows:
                 header_cells = await header_rows[0].locator("th").all_text_contents()
+                log.info("  FRCL th headers (%d): %s", len(header_cells),
+                         " | ".join(f"[{i}]{h[:20]}" for i, h in enumerate(header_cells)))
                 col_map = self._detect_frcl_columns(header_cells)
                 log.info("  FRCL column map: %s", col_map)
         except Exception as exc:
@@ -787,35 +814,34 @@ class ClerkScraper:
                 if len(cells_text) < 3:
                     continue
 
-                # Log full row on first record to help diagnose column layout
-                if not records:
-                    log.info("  FRCL first row cells (%d): %s",
-                             len(cells_text),
-                             " | ".join(c[:20] for c in cells_text))
+                # Always log every row's full cell contents at INFO level
+                log.info("  FRCL row cells (%d): %s",
+                         len(cells_text),
+                         " | ".join(f"[{i}]{c[:20]}" for i, c in enumerate(cells_text)))
 
-                # Use detected column map if available, otherwise fall back to positional
+                # Use detected column map; fallback of -1 is intentionally disabled
                 def get_col(key: str, fallback: int) -> str:
                     idx = col_map.get(key, fallback)
-                    return cells_text[idx].strip() if idx < len(cells_text) else ""
+                    if idx < 0 or idx >= len(cells_text):
+                        return ""
+                    return cells_text[idx].strip()
 
                 doc_num   = get_col("doc_num", 1)
                 sale_date = get_col("sale_date", 2)
                 file_date = get_col("file_date", 3)
-                trustor   = get_col("trustor", -1)   # property owner / grantor
-                trustee   = get_col("trustee", -1)   # foreclosing party
+                trustor   = get_col("trustor", -1)
                 prop_addr = get_col("address", -1)
 
-                # If no column map, scan all cells for a name-like value
-                if not trustor and not col_map:
-                    for cell in cells_text[4:]:
+                # Fallback: scan cells 4+ for first name-like value (not a date/digit/short)
+                if not trustor:
+                    for ci, cell in enumerate(cells_text[4:], start=4):
                         c = cell.strip()
-                        # Name-like: mostly letters, reasonable length, not a date or number
-                        if (c and len(c) > 4 and len(c) < 80
-                                and not re.match(r'^\d', c)
+                        if (c and 5 < len(c) < 80
+                                and not re.match(r'\d', c)
                                 and not re.match(r'\d{2}/\d{2}/\d{4}', c)
-                                and re.search(r'[A-Za-z]{3,}', c)):
+                                and re.search(r'[A-Za-z]{4,}', c)):
                             trustor = c
-                            log.debug("  FRCL trustor guessed from cell: %s", c[:40])
+                            log.info("  FRCL trustor fallback col[%d]: %s", ci, c[:40])
                             break
 
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
