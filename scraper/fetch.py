@@ -1075,43 +1075,58 @@ class ClerkScraper:
         for i, (year, month) in enumerate(months):
             recs = await self._scrape_frcl_month(page, year, month)
             log.info("  FRCL %04d-%02d -> %d records", year, month, len(recs))
+            # ViewECdocs URLs trigger a file download (PDF), not a normal page load.
+            # We use requests with the browser's cookies to fetch the HTML version instead.
             enriched_count = 0
-            for rec_idx, rec in enumerate(recs):
-                doc_url = rec.get("clerk_url", "")
-                if "ViewECdocs" not in doc_url:
-                    continue
-                try:
-                    log.info("  FRCL xref attempting %s -> %s", rec["doc_num"], doc_url[:80])
-                    resp = await page.goto(doc_url, wait_until="domcontentloaded", timeout=30_000)
-                    await asyncio.sleep(2)
-                    status = resp.status if resp else "?"
-                    final_url = page.url
-                    html = await page.content()
-                    page_text = await page.evaluate("() => document.body ? document.body.innerText : ''")
-                    log.info("  FRCL xref %s: status=%s finalUrl=%s bodyLen=%d bodySnip=%s",
-                             rec["doc_num"], status, final_url[:60], len(html),
-                             page_text[:120].replace("\n", " "))
-                    grantors, grantees, legal = self._parse_viewecdocs_html(html)
-                    if grantors:
-                        rec["owner"] = "; ".join(grantors)
-                    if grantees:
-                        rec["grantee"] = "; ".join(grantees)
-                    if legal:
-                        rec["legal"] = legal
-                    if rec.get("owner") or rec.get("grantee"):
-                        enriched_count += 1
-                        log.info("  FRCL xref %s -> grantor=%s | grantee=%s",
-                                 rec["doc_num"],
-                                 (rec.get("owner") or "")[:35],
-                                 (rec.get("grantee") or "")[:35])
-                    else:
-                        log.info("  FRCL xref %s: page loaded but NO grantors/grantees found", rec["doc_num"])
-                    # Only attempt first 3 records to keep log manageable
-                    if rec_idx >= 2:
-                        log.info("  FRCL xref: stopping diagnostic after 3 records")
-                        break
-                except Exception as exc:
-                    log.info("  FRCL xref %s EXCEPTION: %s", rec.get("doc_num", "?"), exc)
+            try:
+                # Extract cookies from the live Playwright session
+                cookies = await page.context.cookies()
+                session_cookies = {c["name"]: c["value"] for c in cookies}
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                                  "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Referer": CLERK_FRCL_URL,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                }
+                import requests as _requests
+                session = _requests.Session()
+                session.headers.update(headers)
+                session.cookies.update(session_cookies)
+
+                for rec in recs:
+                    doc_url = rec.get("clerk_url", "")
+                    if "ViewECdocs" not in doc_url:
+                        continue
+                    try:
+                        resp = session.get(doc_url, timeout=20, allow_redirects=True)
+                        log.info("  FRCL xref %s: status=%s len=%d snip=%s",
+                                 rec["doc_num"], resp.status_code, len(resp.content),
+                                 resp.text[:100].replace("\n", " "))
+                        if resp.status_code == 200 and "<html" in resp.text.lower():
+                            grantors, grantees, legal = self._parse_viewecdocs_html(resp.text)
+                            if grantors:
+                                rec["owner"] = "; ".join(grantors)
+                            if grantees:
+                                rec["grantee"] = "; ".join(grantees)
+                            if legal:
+                                rec["legal"] = legal
+                            if rec.get("owner") or rec.get("grantee"):
+                                enriched_count += 1
+                                log.info("  FRCL xref %s -> grantor=%s | grantee=%s",
+                                         rec["doc_num"],
+                                         (rec.get("owner") or "")[:35],
+                                         (rec.get("grantee") or "")[:35])
+                            else:
+                                log.info("  FRCL xref %s: HTML received but no names parsed", rec["doc_num"])
+                        elif resp.headers.get("content-type", "").startswith("application/pdf"):
+                            log.info("  FRCL xref %s: got PDF, cannot parse", rec["doc_num"])
+                        else:
+                            log.info("  FRCL xref %s: unexpected content-type=%s",
+                                     rec["doc_num"], resp.headers.get("content-type", "?"))
+                    except Exception as exc:
+                        log.info("  FRCL xref %s failed: %s", rec.get("doc_num", "?"), exc)
+            except Exception as exc:
+                log.warning("  FRCL ViewECdocs session setup failed: %s", exc)
             log.info("  FRCL %04d-%02d enriched %d/%d via ViewECdocs",
                      year, month, enriched_count, len(recs))
             all_records.extend(recs)
