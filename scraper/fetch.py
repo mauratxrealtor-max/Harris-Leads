@@ -1129,7 +1129,7 @@ class ClerkScraper:
                         log.info("  FRCL xref %s failed: %s", rec.get("doc_num", "?"), exc)
             except Exception as exc:
                 log.warning("  FRCL ViewECdocs session setup failed: %s", exc)
-            log.info("  FRCL %04d-%02d enriched %d/%d via ViewECdocs",
+            log.info("  FRCL %04d-%02d: %d/%d records have owner from list page",
                      year, month, enriched_count, len(recs))
             all_records.extend(recs)
             if i < len(months) - 1:
