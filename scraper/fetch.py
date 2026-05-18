@@ -203,8 +203,7 @@ def compute_score(rec: dict) -> tuple[int, list[str]]:
     except (TypeError, ValueError):
         pass
 
-    if "New this week" in flags:
-        score += 5
+   
     if prop_addr and prop_addr.strip():
         score += 5
 
@@ -696,7 +695,7 @@ class ClerkScraper:
         cur = start
         while cur <= end:
             months.append((cur.year, cur.month))
-            cur = cur.replace(month=cur.month + 1) if cur.month < 12 else cur.replace(year=cur.year + 1, month=1)
+            if cur.month == 12:                 cur = cur.replace(year=cur.year + 1, month=1)             else:                 cur = cur.replace(month=cur.month + 1)
         return months
 
     async def _fill_frcl_form(self, page, year: int, month: int):
