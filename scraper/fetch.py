@@ -695,7 +695,10 @@ class ClerkScraper:
         cur = start
         while cur <= end:
             months.append((cur.year, cur.month))
-            if cur.month == 12:                 cur = cur.replace(year=cur.year + 1, month=1)             else:                 cur = cur.replace(month=cur.month + 1)
+           if cur.month == 12:
+                cur = cur.replace(year=cur.year + 1, month=1)
+            else:
+                cur = cur.replace(month=cur.month + 1)
         return months
 
     async def _fill_frcl_form(self, page, year: int, month: int):
