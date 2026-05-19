@@ -26,6 +26,7 @@ import sys
 import time
 import traceback
 import zipfile
+import io
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -217,6 +218,7 @@ class ParcelLookup:
     def __init__(self):
         self._idx: dict[str, dict] = {}
         self._prefix_idx: dict[str, dict] = {}
+        self._addr_idx: dict[str, dict] = {}
         self._loaded = False
 
     def _normalise(self, name: str) -> str:
@@ -264,6 +266,9 @@ class ParcelLookup:
                                 prefix = f"{words[0]} {words[1]}"
                                 if prefix not in self._prefix_idx:
                                     self._prefix_idx[prefix] = parcel
+                            site_addr_key = parcel["prop_address"].upper().strip()
+                            if site_addr_key and not site_addr_key.startswith("0 "):
+                                self._addr_idx[site_addr_key] = {**parcel, "owner": owner}
                             count += 1
             except Exception as exc:
                 log.error("Failed to load %s: %s", csv_path.name, exc)
@@ -273,6 +278,23 @@ class ParcelLookup:
             self._loaded = True
         else:
             log.warning("HCAD lookup loaded 0 records — address enrichment disabled.")
+
+    def lookup_by_address(self, address: str) -> dict:
+        if not self._loaded or not address:
+            return {}
+        addr = re.sub(r'\s+', ' ', address.upper().strip())
+        hit = self._addr_idx.get(addr)
+        if hit: return hit
+        addr_base = re.sub(r'\s+(APT|UNIT|STE|#)\s*\S+.*$', '', addr).strip()
+        hit = self._addr_idx.get(addr_base)
+        if hit: return hit
+        m = re.match(r'^(\d+)\s+(\w+)', addr_base)
+        if m:
+            num, street = m.group(1), m.group(2)
+            for key, val in self._addr_idx.items():
+                if key.startswith(f"{num} {street}"):
+                    return val
+        return {}
 
     def lookup(self, owner: str) -> dict:
         if not self._loaded or not owner:
@@ -578,7 +600,7 @@ class ClerkScraper:
                     name = m.group(1).strip().strip("|").strip()
                     if name and len(name) > 1 and name not in grantees:
                         grantees.append(name)
-                        break  # Take only first grantee to avoid duplicates
+                        break
 
                 grantor = "; ".join(grantors)
                 grantee = grantees[0] if grantees else ""
@@ -731,11 +753,6 @@ class ClerkScraper:
 
     @staticmethod
     def _detect_frcl_columns(header_cells: list[str]) -> dict[str, int]:
-        """
-        Map FRCL table column names to their index positions.
-        The FRCL_R.aspx table header varies but typically includes:
-        File Number | Sale Date | File Date | Pages | Trustor | Trustee | Property Address | ...
-        """
         mapping: dict[str, int] = {}
         for i, cell in enumerate(header_cells):
             c = cell.lower().strip()
@@ -754,13 +771,8 @@ class ClerkScraper:
         return mapping
 
     async def _parse_frcl_page(self, page, year: int, month: int) -> list[dict]:
-        """
-        Parse FRCL_R.aspx results using Playwright directly.
-        Reads ALL columns including Trustor (grantor/owner) and address if present.
-        """
         records: list[dict] = []
 
-        # Use Playwright to find all rows containing FRCL- doc numbers
         try:
             frcl_rows = await page.locator('tr:has(td:has-text("FRCL-"))').all()
         except Exception as exc:
@@ -772,7 +784,6 @@ class ClerkScraper:
             log.warning("  FRCL %04d-%02d: no FRCL- rows found", year, month)
             return records
 
-        # --- DIAGNOSTIC: dump all table headers so we can map columns exactly ---
         try:
             full_html = await page.content()
             from bs4 import BeautifulSoup as _BS
@@ -783,47 +794,27 @@ class ClerkScraper:
                     _headers = [th.get_text(" ", strip=True) for th in _tbl.find_all("th")]
                     log.info("  FRCL TABLE HEADERS (%d): %s", len(_headers),
                              " | ".join(f"[{i}]{h[:25]}" for i, h in enumerate(_headers)))
-                    _first_data = None
-                    for _tr in _tbl.find_all("tr"):
-                        if "FRCL-" in _tr.get_text():
-                            _first_data = _tr
-                            break
-                    if _first_data:
-                        _dcells = [td.get_text(" ", strip=True) for td in _first_data.find_all("td")]
-                        log.info("  FRCL FIRST DATA ROW (%d cells): %s", len(_dcells),
-                                 " | ".join(f"[{i}]{c[:25]}" for i, c in enumerate(_dcells)))
                     break
         except Exception as _exc:
             log.debug("  FRCL diagnostic dump failed: %s", _exc)
 
-        # Detect column layout from header row
         col_map: dict[str, int] = {}
         try:
             header_rows = await page.locator("tr:has(th)").all()
             if header_rows:
                 header_cells = await header_rows[0].locator("th").all_text_contents()
-                log.info("  FRCL th headers (%d): %s", len(header_cells),
-                         " | ".join(f"[{i}]{h[:20]}" for i, h in enumerate(header_cells)))
                 col_map = self._detect_frcl_columns(header_cells)
-                log.info("  FRCL column map: %s", col_map)
         except Exception as exc:
             log.debug("  FRCL header detection failed: %s", exc)
 
         for frcl_row in frcl_rows:
             try:
-                # Use evaluate to get innerText of each td (catches nested <a>, <span> text)
                 cells_text = await frcl_row.evaluate(
                     "row => Array.from(row.querySelectorAll('td')).map(td => td.innerText.trim())"
                 )
                 if not cells_text or len(cells_text) < 3:
                     continue
 
-                # Always log every row's full cell contents at INFO level
-                log.info("  FRCL row cells (%d): %s",
-                         len(cells_text),
-                         " | ".join(f"[{i}]{c[:25]}" for i, c in enumerate(cells_text)))
-
-                # Use detected column map; fallback of -1 is intentionally disabled
                 def get_col(key: str, fallback: int) -> str:
                     idx = col_map.get(key, fallback)
                     if idx < 0 or idx >= len(cells_text):
@@ -836,52 +827,25 @@ class ClerkScraper:
                 trustor   = get_col("trustor", -1)
                 prop_addr = get_col("address", -1)
 
-                # Fallback: scan cells 4+ for first name-like value (not a date/digit/short)
-                if not trustor:
-                    for ci, cell in enumerate(cells_text[4:], start=4):
-                        c = cell.strip()
-                        if (c and 5 < len(c) < 80
-                                and not re.match(r'\d', c)
-                                and not re.match(r'\d{2}/\d{2}/\d{4}', c)
-                                and re.search(r'[A-Za-z]{4,}', c)):
-                            trustor = c
-                            log.info("  FRCL trustor fallback col[%d]: %s", ci, c[:40])
-                            break
-
-                # Fallback: extract doc_num from href if cells_text didn't give it
                 if not re.search(r'FRCL-\d{4}-\d+', doc_num):
-                    # Try to find FRCL- pattern anywhere in the row cells
                     all_text = " ".join(cells_text)
                     m = re.search(r'(FRCL-\d{4}-\d+)', all_text)
-                    if m:
-                        doc_num = m.group(1)
-                        log.info("  FRCL doc_num rescued from row text: %s", doc_num)
-                    else:
-                        continue
+                    if m: doc_num = m.group(1)
+                    else: continue
 
-                # Use sale date as filed date (more relevant for motivated sellers)
                 filed = _parse_date(sale_date) or _parse_date(file_date)
-
                 doc_code = "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
-                # Capture ViewECdocs URL from the href attribute directly
                 clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
                 try:
                     link_el = frcl_row.locator("a").first
                     if await link_el.count() > 0:
                         href = await link_el.get_attribute("href")
-                        if href:
-                            log.info("  FRCL href for %s: %s", doc_num, href[:80])
                         if href and len(href) > 10 and "javascript" not in href.lower():
-                            if href.startswith("http"):
-                                clerk_url = href
-                            elif href.startswith("/"):
-                                clerk_url = f"https://www.cclerk.hctx.net{href}"
-                            else:
-                                # Relative URL like "ViewECdocs.aspx?ID=..."
-                                clerk_url = f"https://www.cclerk.hctx.net/applications/websearch/{href}"
-                except Exception as exc:
-                    log.debug("FRCL href capture error: %s", exc)
+                            if href.startswith("http"): clerk_url = href
+                            elif href.startswith("/"): clerk_url = f"https://www.cclerk.hctx.net{href}"
+                            else: clerk_url = f"https://www.cclerk.hctx.net/applications/websearch/{href}"
+                except Exception: pass
 
                 records.append({
                     "doc_num":      doc_num,
@@ -889,8 +853,6 @@ class ClerkScraper:
                     "filed":        filed,
                     "cat":          cat,
                     "cat_label":    cat_label,
-                    # trustor = property owner (grantor in foreclosure context)
-                    # grantee = foreclosing trustee — left blank, filled by ViewECdocs
                     "owner":        trustor,
                     "grantee":      "",
                     "amount":       None,
@@ -907,191 +869,25 @@ class ClerkScraper:
                     "flags":        [],
                     "score":        0,
                 })
-                if trustor:
-                    log.info("  FRCL list row %s -> trustor=%s addr=%s",
-                             doc_num, trustor[:35], prop_addr[:35] if prop_addr else "")
-            except Exception as exc:
-                log.debug("FRCL record build error: %s", exc)
-
-        log.info("  FRCL %04d-%02d: %d records", year, month, len(records))
+            except Exception: pass
         return records
-
-    async def _paginate_frcl(self, page, year: int, month: int) -> list[dict]:
-        all_recs: list[dict] = []
-        page_num = 1
-        while True:
-            recs = await self._parse_frcl_page(page, year, month)
-            all_recs.extend(recs)
-            log.info("  FRCL %04d-%02d page %d: %d records", year, month, page_num, len(recs))
-            next_el = page.locator(
-                'a:has-text("Next"), input[value*="Next"], a[id*="Next"], '
-                'a[id*="next"], a:has-text(">"), td a:has-text(">")'
-            ).first
-            if await next_el.count() == 0:
-                break
-            try:
-                await next_el.click()
-                await page.wait_for_load_state("networkidle", timeout=30_000)
-                page_num += 1
-            except Exception as exc:
-                log.warning("  FRCL pagination stopped at page %d: %s", page_num, exc)
-                break
-        return all_recs
-
-    async def _scrape_frcl_month(self, page, year: int, month: int) -> list[dict]:
-        for attempt in range(1, 4):
-            try:
-                await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=60_000)
-                await page.wait_for_load_state("networkidle", timeout=30_000)
-                await asyncio.sleep(2)
-                await self._fill_frcl_form(page, year, month)
-                return await self._paginate_frcl(page, year, month)
-            except Exception as exc:
-                log.warning("FRCL %04d-%02d attempt %d: %s", year, month, attempt, exc)
-                if attempt < 3:
-                    await asyncio.sleep(3 * attempt)
-        return []
-
-    async def _enrich_frcl_record(self, page, rec: dict, parcel_db) -> dict:
-        """Visit the stored ViewECdocs URL to get grantor/grantee/legal."""
-        doc_url = rec.get("clerk_url", "")
-        doc_num = rec.get("doc_num", "")
-
-        log.info("  FRCL enrich %s: url=%s", doc_num, doc_url[:80] if doc_url else "EMPTY")
-
-        # Only visit ViewECdocs URLs — skip plain FRCL search URLs
-        if not doc_url or "ViewECdocs" not in doc_url:
-            log.info("  FRCL enrich %s: skipped (no ViewECdocs in url)", doc_num)
-            return rec
-
-        try:
-            await page.goto(doc_url, wait_until="networkidle", timeout=30_000)
-            await asyncio.sleep(1.5)
-            html = await page.content()
-            grantors, grantees, legal = self._parse_viewecdocs_html(html)
-            if grantors:
-                rec["owner"] = "; ".join(grantors)
-            if grantees:
-                rec["grantee"] = "; ".join(grantees)
-            if legal:
-                rec["legal"] = legal
-            if rec.get("owner") or rec.get("grantee"):
-                log.info("  FRCL xref %s -> grantor=%s | grantee=%s",
-                         doc_num, (rec.get("owner") or "")[:35], (rec.get("grantee") or "")[:35])
-        except Exception as exc:
-            log.debug("FRCL xref %s failed: %s", doc_num, exc)
-        return rec
-
-    async def enrich_frcl_records(self, page, records: list[dict], parcel_db=None) -> list[dict]:
-        """Click each FRCL doc link to get grantor/grantee/legal from ViewECdocs page."""
-        if page is None:
-            return records
-        nofc_recs = [r for r in records if r.get("doc_type") == "NOFC" and not r.get("owner")]
-        if not nofc_recs:
-            return records
-        log.info("FRCL enrichment: looking up %d foreclosure records via doc links...", len(nofc_recs))
-        enriched = 0
-        for rec in nofc_recs:
-            rec = await self._enrich_frcl_record(page, rec, parcel_db)
-            if rec.get("owner"):
-                enriched += 1
-            await asyncio.sleep(1)
-        log.info("FRCL enrichment: enriched %d/%d records", enriched, len(nofc_recs))
-        return records
-
-    @staticmethod
-    def _parse_viewecdocs_html(html: str) -> tuple[list, list, str]:
-        """
-        Extract grantors, grantees, and legal description from a ViewECdocs page.
-        Handles both table-based (tr/td) and label/value div/span layouts.
-        Returns (grantors, grantees, legal).
-        """
-        soup = BeautifulSoup(html, "lxml")
-        grantors, grantees, legal = [], [], ""
-
-        # Strategy 1: tr/td table rows with label in first cell
-        for row in soup.find_all("tr"):
-            cells = [td.get_text(" ", strip=True) for td in row.find_all(["td", "th"])]
-            if len(cells) < 2:
-                continue
-            label = cells[0].lower().strip().rstrip(":")
-            value = cells[1].strip()
-            if not value or len(value) < 2:
-                continue
-            if "grantor" in label and value not in grantors:
-                grantors.append(value)
-            elif "grantee" in label and value not in grantees:
-                grantees.append(value)
-            elif any(k in label for k in ("legal", "desc", "lot", "block")) and not legal:
-                legal = value
-
-        # Strategy 2: full-text regex scan (catches span/div label layouts)
-        if not grantors or not grantees:
-            full_text = soup.get_text(" ", strip=True)
-            if not grantors:
-                for m in re.finditer(
-                    r'Grantor\s*[:\-]\s*([A-Z][A-Z0-9\s,\.\-\']{2,60}?)(?=\s*(?:Grantor|Grantee|Legal|Desc|Lot|Block|Sale|File|\d{2}/|\Z))',
-                    full_text, re.IGNORECASE
-                ):
-                    name = m.group(1).strip().rstrip(",").strip()
-                    if name and len(name) > 2 and name not in grantors:
-                        grantors.append(name)
-            if not grantees:
-                for m in re.finditer(
-                    r'Grantee\s*[:\-]\s*([A-Z][A-Z0-9\s,\.\-\']{2,60}?)(?=\s*(?:Grantor|Grantee|Legal|Desc|Lot|Block|Sale|File|\d{2}/|\Z))',
-                    full_text, re.IGNORECASE
-                ):
-                    name = m.group(1).strip().rstrip(",").strip()
-                    if name and len(name) > 2 and name not in grantees:
-                        grantees.append(name)
-            if not legal:
-                m = re.search(
-                    r'(?:Legal|Description|Desc)\s*[:\-]\s*(.{5,120}?)(?=\s*(?:Grantor|Grantee|Sale|File|\Z))',
-                    full_text, re.IGNORECASE
-                )
-                if m:
-                    legal = m.group(1).strip()
-
-        # Strategy 3: look for labelled spans/divs
-        if not grantors or not grantees:
-            for el in soup.find_all(["span", "div", "td", "th", "label"]):
-                el_text = el.get_text(" ", strip=True).lower()
-                if not el_text:
-                    continue
-                sib = el.find_next_sibling()
-                sib_text = sib.get_text(" ", strip=True) if sib else ""
-                if not sib_text or len(sib_text) < 2:
-                    continue
-                if "grantor" in el_text and sib_text not in grantors:
-                    grantors.append(sib_text)
-                elif "grantee" in el_text and sib_text not in grantees:
-                    grantees.append(sib_text)
-
-        return grantors, grantees, legal
 
     async def fetch_frcl_on_page(self, page) -> list[dict]:
         months = self._months_in_range(self.date_from, self.date_to)
-        log.info("FRCL scraping %d month(s): %s",
-                 len(months), ", ".join(f"{y}-{m:02d}" for y, m in months))
+        log.info("FRCL scraping %d month(s): %s", len(months), ", ".join(f"{y}-{m:02d}" for y, m in months))
         all_records: list[dict] = []
         for i, (year, month) in enumerate(months):
             recs = await self._scrape_frcl_month(page, year, month)
-            log.info("  FRCL %04d-%02d -> %d records", year, month, len(recs))
-            # ViewECdocs URLs trigger a file download (PDF), not a normal page load.
-            # We use requests with the browser's cookies to fetch the HTML version instead.
             enriched_count = 0
             try:
-                # Extract cookies from the live Playwright session
                 cookies = await page.context.cookies()
                 session_cookies = {c["name"]: c["value"] for c in cookies}
                 headers = {
-                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                                  "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                     "Referer": CLERK_FRCL_URL,
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept": "application/pdf,text/html,*/*",
                 }
-                import requests as _requests
-                session = _requests.Session()
+                session = requests.Session()
                 session.headers.update(headers)
                 session.cookies.update(session_cookies)
 
@@ -1101,41 +897,64 @@ class ClerkScraper:
                         continue
                     try:
                         resp = session.get(doc_url, timeout=20, allow_redirects=True)
-                        log.info("  FRCL xref %s: status=%s len=%d snip=%s",
-                                 rec["doc_num"], resp.status_code, len(resp.content),
-                                 resp.text[:100].replace("\n", " "))
-                        if resp.status_code == 200 and "<html" in resp.text.lower():
-                            grantors, grantees, legal = self._parse_viewecdocs_html(resp.text)
-                            if grantors:
-                                rec["owner"] = "; ".join(grantors)
-                            if grantees:
-                                rec["grantee"] = "; ".join(grantees)
-                            if legal:
-                                rec["legal"] = legal
-                            if rec.get("owner") or rec.get("grantee"):
+                        if resp.status_code == 200 and (resp.headers.get("content-type", "").startswith("application/pdf") or b"%PDF" in resp.content[:10]):
+                            import pypdf
+                            reader = pypdf.PdfReader(io.BytesIO(resp.content))
+                            full_text = ""
+                            for pdf_page in reader.pages:
+                                text = pdf_page.extract_text()
+                                if text: full_text += text + "\n"
+                            
+                            owner_match = re.search(r'(?:Debtor|Trustor|Grantor)\s*:\s*([^\n]+)', full_text, re.I)
+                            if owner_match: rec["owner"] = owner_match.group(1).strip()
+                            
+                            lender_match = re.search(r'(?:Beneficiary|Lender|Mortgagee)\s*:\s*([^\n]+)', full_text, re.I)
+                            if lender_match: rec["grantee"] = lender_match.group(1).strip()
+                            
+                            addr_match = re.search(r'\b(\d{1,5})\s+([NSEW]\s+)?([A-Z0-9\s]{2,30}(?:ST|AVE|BLVD|DR|LN|RD|WAY|CT|PL|TRL|FWY|PKWY|HWY|CIR|LOOP))\b', full_text.upper())
+                            if addr_match: rec["prop_address"] = addr_match.group(0).strip()
+                            
+                            if rec.get("owner") or rec.get("prop_address"):
                                 enriched_count += 1
-                                log.info("  FRCL xref %s -> grantor=%s | grantee=%s",
-                                         rec["doc_num"],
-                                         (rec.get("owner") or "")[:35],
-                                         (rec.get("grantee") or "")[:35])
-                            else:
-                                log.info("  FRCL xref %s: HTML received but no names parsed", rec["doc_num"])
-                        elif resp.headers.get("content-type", "").startswith("application/pdf"):
-                            log.info("  FRCL xref %s: got PDF, cannot parse", rec["doc_num"])
-                        else:
-                            log.info("  FRCL xref %s: unexpected content-type=%s",
-                                     rec["doc_num"], resp.headers.get("content-type", "?"))
+                                log.info(f"  FRCL parsed PDF {rec['doc_num']} -> Owner: {rec['owner']}, Addr: {rec['prop_address']}")
                     except Exception as exc:
-                        log.info("  FRCL xref %s failed: %s", rec.get("doc_num", "?"), exc)
+                        log.info(f"  FRCL PDF extraction failed for {rec.get('doc_num', '?')}: {exc}")
             except Exception as exc:
                 log.warning("  FRCL ViewECdocs session setup failed: %s", exc)
-            log.info("  FRCL %04d-%02d: %d/%d records have owner from list page",
-                     year, month, enriched_count, len(recs))
+            
             all_records.extend(recs)
             if i < len(months) - 1:
                 await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=20_000)
                 await asyncio.sleep(2)
         return all_records
+
+    async def _paginate_frcl(self, page, year: int, month: int) -> list[dict]:
+        all_recs: list[dict] = []
+        page_num = 1
+        while True:
+            recs = await self._parse_frcl_page(page, year, month)
+            all_recs.extend(recs)
+            next_el = page.locator('a:has-text("Next"), input[value*="Next"], a[id*="Next"], a[id*="next"], a:has-text(">"), td a:has-text(">")').first
+            if await next_el.count() == 0:
+                break
+            try:
+                await next_el.click()
+                await page.wait_for_load_state("networkidle", timeout=30_000)
+                page_num += 1
+            except Exception:
+                break
+        return all_recs
+
+    async def _scrape_frcl_month(self, page, year: int, month: int) -> list[dict]:
+        for attempt in range(1, 4):
+            try:
+                await page.goto(CLERK_FRCL_URL, wait_until="networkidle", timeout=60_000)
+                await asyncio.sleep(2)
+                await self._fill_frcl_form(page, year, month)
+                return await self._paginate_frcl(page, year, month)
+            except Exception:
+                if attempt < 3: await asyncio.sleep(3 * attempt)
+        return []
 
     async def fetch_all_on_page(self, page) -> list[dict]:
         all_records: list[dict] = []
@@ -1143,41 +962,7 @@ class ClerkScraper:
             url = CLERK_FRCL_URL if doc_code in FRCL_TYPES else CLERK_RP_URL
             log.info("Fetching %s from %s", doc_code, url)
             recs = await self._scrape_doc_type(page, doc_code, url)
-            log.info("  %s -> %d records", doc_code, len(recs))
             all_records.extend(recs)
-        return all_records
-
-    async def fetch_all(self) -> list[dict]:
-        if not HAS_PW:
-            log.error("Playwright not installed.")
-            return []
-
-        all_records: list[dict] = []
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
-            )
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                           "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 900},
-            )
-            page = await context.new_page()
-            page.set_default_timeout(60_000)
-
-            for i, doc_code in enumerate(TARGET_CODES):
-                url = CLERK_FRCL_URL if doc_code in FRCL_TYPES else CLERK_RP_URL
-                log.info("Fetching %s from %s", doc_code, url)
-                recs = await self._scrape_doc_type(page, doc_code, url)
-                log.info("  %s -> %d records", doc_code, len(recs))
-                all_records.extend(recs)
-                _save_partial(all_records, self.date_from, self.date_to)
-                if i < len(TARGET_CODES) - 1:
-                    await asyncio.sleep(2 + (i % 3))
-
-            await browser.close()
-
         return all_records
 
 
@@ -1186,8 +971,7 @@ class ClerkScraper:
 # ---------------------------------------------------------------------------
 class StaticClerkScraper:
     HEADERS = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
 
@@ -1199,18 +983,15 @@ class StaticClerkScraper:
 
     @staticmethod
     def _fmt(iso: str) -> str:
-        try:
-            return datetime.strptime(iso, "%Y-%m-%d").strftime("%m/%d/%Y")
-        except Exception:
-            return iso
+        try: return datetime.strptime(iso, "%Y-%m-%d").strftime("%m/%d/%Y")
+        except Exception: return iso
 
     def _viewstate(self, html: str) -> dict[str, str]:
         soup = BeautifulSoup(html, "lxml")
         fields = {}
         for name in ["__VIEWSTATE", "__VIEWSTATEGENERATOR", "__EVENTVALIDATION"]:
             el = soup.find("input", {"name": name})
-            if el:
-                fields[name] = el.get("value", "")
+            if el: fields[name] = el.get("value", "")
         return fields
 
     def _search(self, url: str, doc_code: str) -> list[dict]:
@@ -1218,7 +999,6 @@ class StaticClerkScraper:
         records: list[dict] = []
         try:
             resp = self.session.get(url, timeout=30)
-            resp.raise_for_status()
             vs = self._viewstate(resp.text)
             payload = {
                 **vs,
@@ -1230,23 +1010,19 @@ class StaticClerkScraper:
                 "ctl00$ContentPlaceHolder1$btnSearch":     "Search",
             }
             resp = self.session.post(url, data=payload, timeout=60)
-            resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "lxml")
             records.extend(self._parse_table(soup, doc_code, cat, cat_label))
-        except Exception as exc:
-            log.warning("Static scraper %s @ %s: %s", doc_code, url, exc)
+        except Exception: pass
         return records
 
     def _parse_table(self, soup, doc_code, cat, cat_label) -> list[dict]:
         records = []
         for tbl in soup.find_all("table"):
             text = tbl.get_text(" ", strip=True).lower()
-            if not any(k in text for k in ("grantor", "filed", "file number")):
-                continue
+            if not any(k in text for k in ("grantor", "filed", "file number")): continue
             for row in tbl.find_all("tr")[1:]:
                 cells = row.find_all("td")
-                if not cells:
-                    continue
+                if not cells: continue
                 try:
                     texts = [c.get_text(" ", strip=True) for c in cells]
                     records.append({
@@ -1266,21 +1042,17 @@ class StaticClerkScraper:
                         "clerk_url":    "",
                         "flags":        [], "score": 0,
                     })
-                except Exception:
-                    continue
+                except Exception: continue
         return records
 
     def fetch_all(self) -> list[dict]:
         all_records: list[dict] = []
         for doc_code in TARGET_CODES:
             url = CLERK_FRCL_URL if doc_code in FRCL_TYPES else CLERK_RP_URL
-            log.info("Static scraping %s", doc_code)
             try:
                 recs = self._search(url, doc_code)
-                log.info("  %s -> %d records", doc_code, len(recs))
                 all_records.extend(recs)
-            except Exception as exc:
-                log.warning("  %s failed: %s", doc_code, exc)
+            except Exception: pass
         return all_records
 
 
@@ -1305,7 +1077,6 @@ def export_ghl_csv(records: list[dict], path: Path):
         w = csv.DictWriter(fh, fieldnames=columns)
         w.writeheader()
         for r in records:
-            # Use grantee (property owner) for name fields; fall back to grantor
             name_source = r.get("grantee", "") or r.get("owner", "")
             first, last = split_name(name_source)
             w.writerow({
@@ -1329,7 +1100,6 @@ def export_ghl_csv(records: list[dict], path: Path):
                 "Source":                 "Harris County Clerk",
                 "Public Records URL":     r.get("clerk_url", ""),
             })
-    log.info("GHL CSV -> %s (%d rows)", path, len(records))
 
 
 # ---------------------------------------------------------------------------
@@ -1349,7 +1119,6 @@ def save_output(records: list[dict], date_from: str, date_to: str):
         dest.parent.mkdir(parents=True, exist_ok=True)
         with open(dest, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2, default=str)
-        log.info("Saved: %s (%d records)", dest, len(records))
 
 
 def _save_partial(records: list[dict], date_from: str, date_to: str):
@@ -1368,8 +1137,7 @@ def _save_partial(records: list[dict], date_from: str, date_to: str):
             dest.parent.mkdir(parents=True, exist_ok=True)
             with open(dest, "w", encoding="utf-8") as fh:
                 json.dump(payload, fh, indent=2, default=str)
-    except Exception:
-        pass
+    except Exception: pass
 
 
 # ---------------------------------------------------------------------------
@@ -1383,9 +1151,6 @@ async def main():
     log.info("=" * 60)
     log.info("Harris County Motivated Seller Scraper")
     log.info("Date range : %s -> %s", date_from, date_to)
-    log.info("Doc types  : %s", ", ".join(TARGET_CODES))
-    log.info("Portal RP  : %s", CLERK_RP_URL)
-    log.info("Portal FRCL: %s", CLERK_FRCL_URL)
     log.info("=" * 60)
 
     CHUNK_DAYS  = 14
@@ -1399,80 +1164,49 @@ async def main():
         chunks.append((cur.strftime("%Y-%m-%d"), nxt.strftime("%Y-%m-%d")))
         cur = nxt + timedelta(days=1)
 
-    log.info("Scraping %d chunks of %d days (delay: %ds each)", len(chunks), CHUNK_DAYS, CHUNK_DELAY)
-
     all_raw: list[dict] = []
-    pw_page = None  # saved for FRCL enrichment
 
     if HAS_PW:
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
-            )
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                           "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 900},
-            )
+            browser = await pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            context = await browser.new_context(user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36", viewport={"width": 1280, "height": 900})
             page = await context.new_page()
             page.set_default_timeout(60_000)
 
             for i, (c_from, c_to) in enumerate(chunks, 1):
-                log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
                 try:
                     scraper = ClerkScraper(c_from, c_to)
                     recs = await scraper.fetch_all_on_page(page)
-                    log.info("Chunk %d: %d records (total: %d)", i, len(recs), len(all_raw) + len(recs))
                     all_raw.extend(recs)
                 except Exception as exc:
-                    log.warning("Chunk %d failed: %s — skipping", i, exc)
+                    log.warning("Chunk %d failed: %s", i, exc)
 
                 if i < len(chunks):
-                    log.info("Waiting %ds...", CHUNK_DELAY)
-                    try:
-                        await page.goto("about:blank", wait_until="domcontentloaded", timeout=10_000)
-                    except Exception:
-                        pass
+                    try: await page.goto("about:blank", timeout=10_000)
+                    except Exception: pass
                     await asyncio.sleep(CHUNK_DELAY)
 
-            # FRCL scraping — NOFC foreclosures
-            log.info("--- FRCL scraping: NOFC ---")
-            frcl_recs = []
             try:
                 frcl_scraper = ClerkScraper(date_from, date_to)
                 frcl_recs = await frcl_scraper.fetch_frcl_on_page(page)
-                log.info("FRCL total: %d records", len(frcl_recs))
                 all_raw.extend(frcl_recs)
                 _save_partial(all_raw, date_from, date_to)
             except Exception as exc:
                 log.warning("FRCL scrape failed: %s", exc)
 
-            pw_page = page
             await browser.close()
     else:
-        log.warning("Playwright unavailable - using static scraper.")
-        import time as _time
         for i, (c_from, c_to) in enumerate(chunks, 1):
-            log.info("--- Chunk %d/%d: %s -> %s ---", i, len(chunks), c_from, c_to)
             scraper = StaticClerkScraper(c_from, c_to)
             recs = scraper.fetch_all()
-            log.info("Chunk %d: %d records", i, len(recs))
             all_raw.extend(recs)
-            if i < len(chunks):
-                _time.sleep(CHUNK_DELAY)
+            if i < len(chunks): time.sleep(CHUNK_DELAY)
 
-    records = all_raw
-    log.info("Raw records fetched: %d", len(records))
+    records = _deduplicate(all_raw)
 
-    records = _deduplicate(records)
-    log.info("After dedup: %d", len(records))
-
-    log.info("Loading clerk doc number lookup...")
     clerk_db = ClerkLookup()
     clerk_db.load()
 
-    log.info("Loading HCAD parcel data (fallback)...")
     parcel_db = ParcelLookup()
     parcel_db.load()
 
@@ -1480,10 +1214,10 @@ async def main():
     enriched_parcel = 0
     for rec in records:
         doc_num = rec.get("doc_num", "")
-        owner   = rec.get("owner", "")    # grantor
-        grantee = rec.get("grantee", "")  # current property owner (who we want address for)
+        owner   = rec.get("owner", "")    
+        grantee = rec.get("grantee", "")  
+        prop_addr = rec.get("prop_address", "")
 
-        # 1. Try exact clerk lookup by doc number (fast, accurate)
         hit = clerk_db.lookup(doc_num)
         if hit and hit.get("address"):
             rec["prop_address"] = hit["address"]
@@ -1494,18 +1228,22 @@ async def main():
             enriched_clerk += 1
             continue
 
-        # 2. Fall back to fuzzy HCAD name matching.
-        #    Always look up by GRANTEE first (they are the property owner whose
-        #    address we want). Only fall back to grantor if grantee is blank.
+        # Reverse address lookup if the portal gave us an address but no owner name
+        if prop_addr and not owner:
+            hit_addr = parcel_db.lookup_by_address(prop_addr)
+            if hit_addr and hit_addr.get("owner"):
+                rec["owner"] = hit_addr["owner"]
+                if hit_addr.get("mail_address"):
+                    rec.update({k: v for k, v in hit_addr.items() if v})
+                enriched_parcel += 1
+                continue
+
         lookup_name = grantee if grantee else owner
         if lookup_name:
             hit2 = parcel_db.lookup(lookup_name)
             if hit2 and hit2.get("prop_address"):
                 rec.update({k: v for k, v in hit2.items() if v})
                 enriched_parcel += 1
-
-    log.info("Enrichment: %d clerk lookup + %d HCAD fuzzy = %d/%d total",
-             enriched_clerk, enriched_parcel, enriched_clerk + enriched_parcel, len(records))
 
     for rec in records:
         score, flags = compute_score(rec)
@@ -1515,14 +1253,6 @@ async def main():
 
     save_output(records, date_from, date_to)
     export_ghl_csv(records, GHL_CSV)
-
-    log.info("=" * 60)
-    log.info("DONE - %d total leads", len(records))
-    for code in TARGET_CODES + ["NOFC"]:
-        cnt = sum(1 for r in records if r.get("doc_type") == code)
-        if cnt:
-            log.info("  %-12s %d", code, cnt)
-    log.info("=" * 60)
     return 0
 
 
