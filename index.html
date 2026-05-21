@@ -56,8 +56,11 @@
 <script>
     async function loadDashboardData() {
         try {
-            // Direct call to the root records file
-            const response = await fetch('records.json');
+            // Checks root directory first, then checks dashboard folder dynamically
+            let response = await fetch('records.json');
+            if (!response.ok) {
+                response = await fetch('dashboard/records.json');
+            }
             const data = await response.json();
             
             document.getElementById('total-leads').innerText = data.total || 0;
