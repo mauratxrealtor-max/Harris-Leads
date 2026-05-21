@@ -15,9 +15,9 @@ log = logging.getLogger("harris_scraper")
 
 # --- Constants & Configuration ---
 CLERK_RP_URL = "https://www.cclerk.hctx.net/applications/websearch/RP.aspx"
-CLERK_FRCL_URL = "https://www.cclerk.hctx.net/applications/websearch/FRCL.aspx"
+# Updated to the fully responsive layout link used by the county clerk
+CLERK_FRCL_URL = "https://www.cclerk.hctx.net/applications/websearch/FRCL_R.aspx"
 
-# TARGET_CODES controls standard RP.aspx instruments. NOFC is removed here because it uses FRCL.aspx!
 TARGET_CODES = ["DB", "MTG", "NTC", "NOT", "TXD"]
 
 DOC_TYPE_MAP = {
@@ -52,13 +52,22 @@ class HarrisScraper:
     async def _scrape_frcl_month(self, page, year: int, month: int) -> list[dict]:
         records: list[dict] = []
         try:
-            await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=30_000)
+            # Navigate with a generous loading state window
+            await page.goto(CLERK_FRCL_URL, wait_until="networkidle", timeout=60_000)
+            await asyncio.sleep(3)
+            
+            # Wait explicitly for the container elements to become functional
+            await page.wait_for_selector("select#ctl00_ContentPlaceHolder1_ddlYears", state="attached", timeout=30_000)
             
             # Form selections
             await page.select_option("select#ctl00_ContentPlaceHolder1_ddlYears", str(year))
+            await asyncio.sleep(1)
             await page.select_option("select#ctl00_ContentPlaceHolder1_ddlMonths", f"{month:02d}")
+            await asyncio.sleep(1)
+            
             await page.click("input#ctl00_ContentPlaceHolder1_btnSearch")
             await page.wait_for_load_state("domcontentloaded")
+            await asyncio.sleep(2)
 
             # Simple grid read layout
             rows = await page.locator("table#ctl00_ContentPlaceHolder1_gvDocList tr").all()
@@ -103,7 +112,7 @@ class HarrisScraper:
     async def _scrape_doc_type(self, page, doc_code: str, base_url: str) -> list[dict]:
         records: list[dict] = []
         try:
-            await page.goto(base_url, wait_until="domcontentloaded", timeout=30_000)
+            await page.goto(base_url, wait_until="domcontentloaded", timeout=40_000)
             await page.fill("input#ctl00_ContentPlaceHolder1_txtFrom", self.date_from)
             await page.fill("input#ctl00_ContentPlaceHolder1_txtTo", self.date_to)
             await page.fill("input#ctl00_ContentPlaceHolder1_txtInstrument", doc_code)
@@ -184,7 +193,6 @@ class HarrisScraper:
                         resp = session.get(doc_url, timeout=20, allow_redirects=True)
                         if resp.status_code == 200 and (resp.headers.get("content-type", "").startswith("application/pdf") or b"%PDF" in resp.content[:10]):
                             
-                            # Try normal text reading first
                             reader = pypdf.PdfReader(io.BytesIO(resp.content))
                             full_text = ""
                             for pdf_page in reader.pages:
@@ -192,7 +200,6 @@ class HarrisScraper:
                                 if text:
                                     full_text += text + "\n"
 
-                            # If it's a scanned image file, run OCR
                             if len(full_text.strip()) < 50:
                                 log.info("  [OCR Engine] Scanning pixels for scanned image PDF: %s", doc_id)
                                 os.makedirs("tmp", exist_ok=True)
@@ -207,7 +214,6 @@ class HarrisScraper:
                                 if os.path.exists(temp_pdf):
                                     os.remove(temp_pdf)
 
-                            # Parse out standard keywords
                             owner_match = re.search(r'(?:Debtor|Trustor|Grantor|Borrower)\s*:\s*([^\n]+)', full_text, re.I)
                             if owner_match:
                                 rec["owner"] = owner_match.group(1).strip().upper()
@@ -216,7 +222,6 @@ class HarrisScraper:
                             if lender_match:
                                 rec["grantee"] = lender_match.group(1).strip().upper()
 
-                            # Parse legal fallback block or structural layout
                             legal_match = re.search(r'Lot\s+(\d+)\s*,\s*Block\s+(\d+)', full_text, re.I)
                             if legal_match:
                                 rec["legal"] = f"LOT {legal_match.group(1)} BLOCK {legal_match.group(2)}"
@@ -244,12 +249,10 @@ class HarrisScraper:
     async def fetch_all_on_page(self, page) -> list[dict]:
         all_records: list[dict] = []
         
-        # 1. Fetch Foreclosures first via the specialized FRCL logic
         log.info("Starting specialized NOFC foreclosure retrieval...")
         frcl_leads = await self.fetch_frcl_on_page(page)
         all_records.extend(frcl_leads)
         
-        # 2. Fetch standard items via standard inputs
         for doc_code in TARGET_CODES:
             log.info("Fetching standard instrument %s from RP.aspx", doc_code)
             recs = await self._scrape_doc_type(page, doc_code, CLERK_RP_URL)
@@ -260,7 +263,7 @@ class HarrisScraper:
 async def main():
     from playwright.async_api import async_playwright
     
-    lookback = int(os.environ.get("LOOKBACK_DAYS", "14"))
+    lookback = int(os.environ.get("LOOKBACK_DAYS", "60"))
     scraper = HarrisScraper(days_lookback=lookback)
     
     async with async_playwright() as p:
