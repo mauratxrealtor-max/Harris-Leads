@@ -284,4 +284,8 @@ async def main():
         with open("data/records.json", "w") as f:
             json.dump(output, f, indent=2)
             
-        log.
+        log.info("Saved data objects to dashboard and data directories.")
+        await browser.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
