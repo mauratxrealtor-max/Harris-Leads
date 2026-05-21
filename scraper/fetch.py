@@ -17,8 +17,8 @@ log = logging.getLogger("harris_scraper")
 CLERK_RP_URL = "https://www.cclerk.hctx.net/applications/websearch/RP.aspx"
 CLERK_FRCL_URL = "https://www.cclerk.hctx.net/applications/websearch/FRCL.aspx"
 
-TARGET_CODES = ["NOFC", "DB", "MTG", "NTC", "NOT", "TXD"]
-FRCL_TYPES = ["NOFC"]
+# TARGET_CODES controls standard RP.aspx instruments. NOFC is removed here because it uses FRCL.aspx!
+TARGET_CODES = ["DB", "MTG", "NTC", "NOT", "TXD"]
 
 DOC_TYPE_MAP = {
     "NOFC": ("foreclosure", "Notice of Foreclosure Sale"),
@@ -177,7 +177,7 @@ class HarrisScraper:
                 for rec in recs:
                     doc_url = rec.get("clerk_url", "")
                     doc_id = rec.get("doc_num", "?")
-                    if "ViewECdocs" not in doc_url:
+                    if "ViewECDocs" not in doc_url and "ViewECdocs" not in doc_url:
                         continue
 
                     try:
@@ -234,20 +234,27 @@ class HarrisScraper:
             except Exception as exc:
                 log.warning("  FRCL ViewECdocs session setup failed: %s", exc)
 
-            all_records.extend(recs)
-            if i < len(months) - 1:
-                await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=20_000)
-                await asyncio.sleep(2)
+        all_records.extend(recs)
+        if i < len(months) - 1:
+            await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=20_000)
+            await asyncio.sleep(2)
 
         return all_records
 
     async def fetch_all_on_page(self, page) -> list[dict]:
         all_records: list[dict] = []
+        
+        # 1. Fetch Foreclosures first via the specialized FRCL logic
+        log.info("Starting specialized NOFC foreclosure retrieval...")
+        frcl_leads = await self.fetch_frcl_on_page(page)
+        all_records.extend(frcl_leads)
+        
+        # 2. Fetch standard items via standard inputs
         for doc_code in TARGET_CODES:
-            url = CLERK_FRCL_URL if doc_code in FRCL_TYPES else CLERK_RP_URL
-            log.info("Fetching %s from %s", doc_code, url)
-            recs = await self._scrape_doc_type(page, doc_code, url)
+            log.info("Fetching standard instrument %s from RP.aspx", doc_code)
+            recs = await self._scrape_doc_type(page, doc_code, CLERK_RP_URL)
             all_records.extend(recs)
+            
         return all_records
 
 async def main():
@@ -265,7 +272,6 @@ async def main():
         all_leads = await scraper.fetch_all_on_page(page)
         log.info("Retrieved a total of %d raw items across structural fields.", len(all_leads))
         
-        # Format output payload tracking structures
         total_count = len(all_leads)
         with_address = sum(1 for r in all_leads if r.get("prop_address") and "HOUSTON, TX" not in r.get("prop_address"))
         
