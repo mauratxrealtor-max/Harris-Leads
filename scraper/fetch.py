@@ -234,12 +234,12 @@ class HarrisScraper:
             except Exception as exc:
                 log.warning("  FRCL ViewECdocs session setup failed: %s", exc)
 
-        all_records.extend(recs)
-        if i < len(months) - 1:
-            await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=20_000)
-            await asyncio.sleep(2)
+            all_records.extend(recs)
+            if i < len(months) - 1:
+                await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=20_000)
+                await asyncio.sleep(2)
 
-    return all_records
+        return all_records
 
     async def fetch_all_on_page(self, page) -> list[dict]:
         all_records: list[dict] = []
@@ -284,8 +284,4 @@ async def main():
         with open("data/records.json", "w") as f:
             json.dump(output, f, indent=2)
             
-        log.info("Saved data objects to dashboard and data directories.")
-        await browser.close()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        log.
