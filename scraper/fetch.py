@@ -1,8 +1,6 @@
 import os
 import re
 import io
-import gzip
-import csv
 import json
 import logging
 import asyncio
@@ -17,27 +15,6 @@ class HarrisScraper:
         self.date_to = now.strftime("%m/%d/%Y")
         self.date_from = (now - timedelta(days=days_lookback)).strftime("%m/%d/%Y")
         log.info("Starting scraper session looking back from %s to %s", self.date_from, self.date_to)
-        self.hcad_map = self.load_hcad_database()
-
-    def load_hcad_database(self) -> dict:
-        """Dynamically unzips and parses the HCAD reference tables to match legal data to physical addresses."""
-        hcad_data = {}
-        log.info("Scanning repository for HCAD lookup files...")
-        for i in range(1, 4):
-            filename = f"data/hcad_lookup_part{i}.csv.gz"
-            if os.path.exists(filename):
-                try:
-                    log.info(f"Decompressing and indexing {filename}...")
-                    with gzip.open(filename, 'rt', encoding='utf-8') as f:
-                        reader = csv.DictReader(f)
-                        for row in reader:
-                            owner_key = str(row.get('owner', '')).strip().upper()
-                            if owner_key:
-                                hcad_data[owner_key] = row.get('site_addr', 'HOUSTON, TX')
-                except Exception as e:
-                    log.error(f"Error parsing local database file part {i}: {e}")
-        log.info(f"HCAD initialization completed. Indexed {len(hcad_data)} regional property records.")
-        return hcad_data
 
     async def login_to_clerk_office(self, page) -> bool:
         """Secure login layer for authenticated county document searches."""
@@ -85,14 +62,13 @@ class HarrisScraper:
                     if len(cells) < 7:
                         continue
                         
-                    doc_num = cells[1].strip()
-                    file_date = cells[2].strip()
-                    doc_type = cells[3].strip().upper() if cells[3].strip() else code
-                    grantor = cells[4].strip().upper()
-                    grantee = cells[5].strip().upper()
-                    legal = cells[6].strip().upper()
-
-                    matched_address = self.hcad_map.get(grantor, "View clerk file for property description summary metadata")
+                    doc_num = (cells[1] or '').strip()
+                    file_date = (cells[2] or '').strip()
+                    raw_type = (cells[3] or '').strip().upper()
+                    doc_type = raw_type if raw_type else code
+                    grantor = (cells[4] or '').strip().upper()
+                    grantee = (cells[5] or '').strip().upper()
+                    legal = (cells[6] or '').strip().upper()
 
                     score = 50
                     if any(x in doc_type for x in ["MTG", "DEED", "TRUST"]): score = 85
@@ -108,7 +84,7 @@ class HarrisScraper:
                         "type": doc_type,
                         "owner": grantor if grantor else "UNKNOWN OWNER",
                         "grantee": grantee if grantee else "UNKNOWN LENDER",
-                        "prop_address": matched_address,
+                        "prop_address": "View clerk file for property description summary metadata",
                         "legal": legal,
                         "score": score,
                         "clerk_url": f"https://www.cclerk.hctx.net/applications/websearch/ViewECDocs.aspx?f=RP-{doc_num}"
@@ -132,11 +108,9 @@ async def main():
         all_leads = await scraper.fetch_all(page)
         log.info("Scraper sequence finished. Retrieved a total of %d items.", len(all_leads))
         
-        enriched_count = sum(1 for r in all_leads if r["prop_address"] != "View clerk file for property description summary metadata")
-
         output = {
             "total": len(all_leads),
-            "with_address": enriched_count,
+            "with_address": 0,
             "fetched_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "records": all_leads
         }
@@ -144,7 +118,7 @@ async def main():
         with open("records.json", "w") as f:
             json.dump(output, f, indent=2)
             
-        log.info("Root directory database updates completed successfully.")
+        log.info("Root folder database updated successfully.")
         await browser.close()
 
 if __name__ == "__main__":
