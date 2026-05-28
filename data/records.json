@@ -1,29 +1,6 @@
 {
-  "fetched_at": "2026-05-19 11:23:56 AM",
-  "records": [
-    {
-      "type": "NOFC",
-      "date": "2026-05-05",
-      "grantee": "WELLS FARGO BANK",
-      "owner": "SMITH, JOHN & MARY",
-      "legal": "LT 12 BLK 4 HARRIS SUBD SEC 2",
-      "doc_num": "FRCL-2026-612"
-    },
-    {
-      "type": "NOFC",
-      "date": "2026-05-05",
-      "grantee": "CHASE BANK NA",
-      "owner": "RODRIGUEZ, CARLOS",
-      "legal": "TR 5A BLK 12 OAK ACRES OUTLOT",
-      "doc_num": "FRCL-2026-1157"
-    },
-    {
-      "type": "NOFC",
-      "date": "2026-05-05",
-      "grantee": "BANK OF AMERICA",
-      "owner": "JONES, WILLIAM",
-      "legal": "LT 32 BLK 1 CLEAR LAKE FOREST",
-      "doc_num": "FRCL-2026-1158"
-    }
-  ]
+  "total": 0,
+  "with_address": 0,
+  "fetched_at": "2026-05-28 15:50:00",
+  "records": []
 }
