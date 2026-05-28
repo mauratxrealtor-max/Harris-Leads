@@ -31,7 +31,6 @@ class HarrisScraper:
                     with gzip.open(filename, 'rt', encoding='utf-8') as f:
                         reader = csv.DictReader(f)
                         for row in reader:
-                            # Match using owner name or parcel legal keywords
                             owner_key = String(row.get('owner', '')).strip().upper()
                             if owner_key:
                                 hcad_data[owner_key] = row.get('site_addr', 'HOUSTON, TX')
@@ -42,8 +41,8 @@ class HarrisScraper:
 
     async def login_to_clerk_office(self, page) -> bool:
         """Secure login layer for authenticated county document searches."""
-        username = os.environ.get("CLERK_USER", "mauratxrealtor@gmail.com")
-        password = os.environ.get("CLERK_PASS", "Mywhy2018")
+        username = os.environ.get("CLERK_USER", "YOUR_USERNAME_HERE")
+        password = os.environ.get("CLERK_PASS", "YOUR_PASSWORD_HERE")
         
         if username == "YOUR_USERNAME_HERE":
             log.info("Running in public access mode. No clerk credentials detected.")
@@ -52,7 +51,6 @@ class HarrisScraper:
         try:
             log.info("Attempting secure login to Harris County Clerk portal...")
             await page.goto("https://www.cclerk.hctx.net/Login.aspx", wait_until="domcontentloaded")
-            # Target credential fields
             await page.fill("input[id*='txtUsername']", username)
             await page.fill("input[id*='txtPassword']", password)
             await page.click("input[id*='btnLogin']")
@@ -65,12 +63,8 @@ class HarrisScraper:
 
     async def fetch_all(self, page) -> list[dict]:
         records = []
-        
-        # Check for clerk credentials and login if present
         await self.login_to_clerk_office(page)
         
-        # Comprehensive tracking matrix for motivated seller codes
-        # Includes: Deeds/Foreclosures (DB, MTG), Notices/Lis Pendens (NTC, NOT, LP), and Tax Liens (TXD)
         instrument_codes = ["DB", "MTG", "NTC", "NOT", "TXD", "LP"]
         for code in instrument_codes:
             log.info("Navigating straight to search results for instrument: %s", code)
@@ -98,10 +92,8 @@ class HarrisScraper:
                     grantee = cells[5].strip().upper()
                     legal = cells[6].strip().upper()
 
-                    # Smart Address lookup matching from the local HCAD dataset
                     matched_address = self.hcad_map.get(grantor, "View clerk file for property description summary metadata")
 
-                    # Dynamic Scoring logic block
                     score = 50
                     if any(x in doc_type for x in ["MTG", "DEED", "TRUST"]): score = 85
                     elif any(x in doc_type for x in ["LP", "PENDENS"]): score = 75
@@ -140,7 +132,6 @@ async def main():
         all_leads = await scraper.fetch_all(page)
         log.info("Scraper sequence finished. Retrieved a total of %d items.", len(all_leads))
         
-        # Calculate true address enrichments
         enriched_count = sum(1 for r in all_leads if r["prop_address"] != "View clerk file for property description summary metadata")
 
         output = {
@@ -150,13 +141,11 @@ async def main():
             "records": all_leads
         }
         
-        os.makedirs("data", exist_ok=True)
-        
-        # Save structural files strictly into the active data pipeline directory
-        with open("data/records.json", "w") as f:
+        # FIXED PATHS: Write output right to the root repository folder where your layout works
+        with open("records.json", "w") as f:
             json.dump(output, f, indent=2)
             
-        log.info("All data directory updates completed successfully.")
+        log.info("Root directory database updates completed successfully.")
         await browser.close()
 
 if __name__ == "__main__":
