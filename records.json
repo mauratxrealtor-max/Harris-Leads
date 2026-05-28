@@ -1,20 +1,6 @@
 {
-  "total": 1,
-  "with_address": 1,
-  "fetched_at": "2026-05-28 14:44:00 PM",
-  "records": [
-    {
-      "id": "RP-FRCL-2026-9999",
-      "doc_num": "FRCL-2026-9999",
-      "date": "2026-05-28",
-      "type": "NOFC",
-      "owner": "SMITH, JOHN & MARY",
-      "grantee": "WELLS FARGO BANK",
-      "prop_address": "123 MAIN ST, HOUSTON, TX 77002",
-      "legal": "LT 12 BLK 4 HARRIS SUBD SEC 2",
-      "score": 50,
-      "clerk_url": "https://www.cclerk.hctx.net/applications/websearch/ViewECDocs.aspx?f=RP-FRCL-2026-9999"
-    }
-  ]
+  "total": 0,
+  "with_address": 0,
+  "fetched_at": "2026-05-28 20:14:05",
+  "records": []
 }
- 
