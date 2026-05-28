@@ -31,7 +31,7 @@ class HarrisScraper:
                     with gzip.open(filename, 'rt', encoding='utf-8') as f:
                         reader = csv.DictReader(f)
                         for row in reader:
-                            owner_key = String(row.get('owner', '')).strip().upper()
+                            owner_key = str(row.get('owner', '')).strip().upper()
                             if owner_key:
                                 hcad_data[owner_key] = row.get('site_addr', 'HOUSTON, TX')
                 except Exception as e:
@@ -141,7 +141,6 @@ async def main():
             "records": all_leads
         }
         
-        # FIXED PATHS: Write output right to the root repository folder where your layout works
         with open("records.json", "w") as f:
             json.dump(output, f, indent=2)
             
