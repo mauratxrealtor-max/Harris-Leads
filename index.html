@@ -65,3 +65,282 @@
 <body>
 <header>
   <div>
+    <div class="logo">Harris County <span>Motivated Sellers</span></div>
+    <div class="meta" id="meta-line">Loading…</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <button class="btn btn-secondary" onclick="exportCSV()">⬇ Export CSV</button>
+    <button class="btn" onclick="location.reload()">↺ Refresh</button>
+  </div>
+</header>
+
+<div id="status">Loading records…</div>
+
+<div id="app" style="display:none">
+  <div class="stats" id="stats-bar"></div>
+  <div class="controls">
+    <input type="text" id="search" placeholder="Search owner, address, doc #…" oninput="applyFilters()" />
+    <select id="filter-cat" onchange="applyFilters()">
+      <option value="">All Lead Types</option>
+      <option value="lp">Lis Pendens / Notice</option>
+      <option value="foreclosure">Foreclosure / Trust</option>
+      <option value="lien">Liens / Tax</option>
+    </select>
+    <select id="filter-score" onchange="applyFilters()">
+      <option value="">All Scores</option>
+      <option value="70">Score ≥ 70 (Hot)</option>
+      <option value="50">Score ≥ 50</option>
+      <option value="30">Score ≥ 30</option>
+    </select>
+    <select id="filter-addr" onchange="applyFilters()">
+      <option value="">All Records</option>
+      <option value="1">Has Summary / Address</option>
+    </select>
+    <select id="filter-group" onchange="applyFilters()">
+      <option value="">All Filings</option>
+      <option value="1">Group by Owner</option>
+    </select>
+    <button class="btn btn-secondary" onclick="clearFilters()">✕ Clear</button>
+    <span class="meta" id="filter-count"></span>
+  </div>
+
+  <div class="table-wrap">
+    <table id="main-table">
+      <thead>
+        <tr>
+          <th onclick="sortBy('score')">Score</th>
+          <th onclick="sortBy('doc_type')">Type</th>
+          <th onclick="sortBy('filed')">Filed</th>
+          <th onclick="sortBy('grantee')">Grantee (Lender)</th>
+          <th onclick="sortBy('owner')">Grantor (Owner)</th>
+          <th onclick="sortBy('prop_address')">Property Summary</th>
+          <th onclick="sortBy('mail_address')">Mailing Address</th>
+          <th>Flags</th>
+          <th>Doc #</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<div class="modal-bg" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <h2 id="modal-title">Record Detail</h2>
+    <div class="modal-grid" id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+let ALL_RECORDS=[], filtered=[], sortCol='score', sortDir='desc', page=1;
+const PAGE_SIZE=50;
+
+async function loadData() {
+  try {
+    const resp = await fetch('data/records.json?v='+Date.now());
+    if (!resp.ok) throw new Error('HTTP '+resp.status);
+    const data = await resp.json();
+    
+    const rawList = data.records || [];
+    ALL_RECORDS = rawList.map(r => {
+      let score = r.score || 40;
+      let cat = "noc";
+      if(/MTG|DEED|TRUST/i.test(r.type || '')) { score = 85; cat = "foreclosure"; }
+      if(/NOTICE|NOT|LP/i.test(r.type || '')) { score = 75; cat = "lp"; }
+      if(/TXD|LIEN/i.test(r.type || '')) { score = 90; cat = "lien"; }
+
+      return {
+        score: score,
+        cat: cat,
+        doc_type: r.type || 'DOC',
+        cat_label: r.type || 'Filing',
+        filed: r.date || 'N/A',
+        grantee: r.grantee || 'UNKNOWN LENDER',
+        owner: r.owner || 'UNKNOWN OWNER',
+        prop_address: r.legal || 'View clerk file for property description summary metadata',
+        mail_address: 'Harris County, TX',
+        flags: r.type ? [r.type] : ['Active Pipeline'],
+        doc_num: r.doc_num || 'N/A',
+        clerk_url: r.clerk_url || '#',
+        legal: r.legal || 'N/A',
+        amount: r.amount || ''
+      };
+    });
+
+    document.getElementById('meta-line').textContent =
+      `Fetched ${data.fetched_at ? data.fetched_at : 'Recent Run'} · Active Date Range Tracking`;
+    
+    const hot = ALL_RECORDS.filter(r => r.score >= 70).length;
+    const warm = ALL_RECORDS.filter(r => r.score >= 50 && r.score < 70).length;
+    const html = [
+      ['Total Leads', ALL_RECORDS.length],
+      ['Hot (≥70)', hot],
+      ['Warm (50–69)', warm],
+      ['With Summary', ALL_RECORDS.filter(r => r.prop_address).length]
+    ].map(([l,v]) => `<div class="stat-card"><div class="val">${v}</div><div class="lbl">${l}</div></div>`).join('');
+    document.getElementById('stats-bar').innerHTML = html;
+
+    applyFilters();
+    document.getElementById('status').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+  } catch(e) {
+    document.getElementById('status').textContent = 'Error loading records.json: ' + e.message;
+  }
+}
+
+function applyFilters() {
+  const q = (document.getElementById('search').value || '').toLowerCase();
+  const cat = document.getElementById('filter-cat').value;
+  const minS = parseInt(document.getElementById('filter-score').value) || 0;
+  const addrOnly = document.getElementById('filter-addr').value === '1';
+  const groupOwner = document.getElementById('filter-group').value === '1';
+
+  let base = ALL_RECORDS.filter(r => {
+    if(minS && r.score < minS) return false;
+    if(cat && r.cat !== cat) return false;
+    if(addrOnly && !r.prop_address) return false;
+    if(q){
+      const hay = [r.owner, r.grantee, r.doc_num, r.prop_address, r.mail_address, r.legal].join(' ').toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  if(groupOwner){
+    const m = new Map();
+    for(const r of base){
+      const k = (r.grantee || r.owner || '').toUpperCase().trim();
+      if(!m.has(k)){ m.set(k, {...r, _count: 1}); }
+      else{
+        const e = m.get(k); e._count++;
+        if(r.score > e.score) m.set(k, {...r, _count: e._count});
+      }
+    }
+    base = Array.from(m.values());
+  }
+
+  filtered = base; sortRecords(); page = 1;
+  document.getElementById('filter-count').textContent = `${filtered.length} records`;
+  renderPage();
+}
+
+function clearFilters(){
+  ['search', 'filter-cat', 'filter-score', 'filter-addr', 'filter-group'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.value = '';
+  });
+  applyFilters();
+}
+
+function sortBy(col){
+  if(sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc'; else { sortCol = col; sortDir = 'desc'; }
+  document.querySelectorAll('th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+  const headers = ['score', 'doc_type', 'filed', 'grantee', 'owner', 'prop_address', 'mail_address', '', 'doc_num'];
+  const idx = headers.indexOf(col);
+  if(idx >= 0) document.querySelectorAll('#main-table thead th')[idx]?.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+  sortRecords(); renderPage();
+}
+
+function sortRecords(){
+  filtered.sort((a,b) => {
+    let av = a[sortCol] ?? '', bv = b[sortCol] ?? '';
+    if(typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av;
+    return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+  });
+}
+
+function renderPage(){
+  const total = filtered.length, totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  page = Math.min(page, totalPages);
+  const start = (page - 1) * PAGE_SIZE;
+  document.getElementById('table-body').innerHTML = filtered.slice(start, start + PAGE_SIZE).map((r, i) => rowHTML(r, start + i)).join('');
+  renderPagination(total, totalPages);
+}
+
+function scoreClass(s){ return s >= 70 ? 'high' : s >= 50 ? 'mid' : 'low'; }
+
+function flagHTML(flags){
+  return (flags || []).map(f => `<span class="flag${/foreclos|pendens|judgment|lien/i.test(f) ? ' red' : ''}">${f}</span>`).join('');
+}
+
+function fmtAddr(addr, city, zip){
+  const full = [addr, city, zip].filter(Boolean).join(', ');
+  if(!full) return '<span class="empty">—</span>';
+  return full.length > 35 ? `<span title="${full}">${full.substring(0, 35)}…</span>` : full;
+}
+
+function trunc(s, n){
+  if(!s) return '<span class="empty">—</span>';
+  return s.length > n ? `<span title="${s}">${s.substring(0, n)}…</span>` : s;
+}
+
+function rowHTML(r, idx){
+  const docLink = r.clerk_url && r.clerk_url !== '#'
+    ? `<a href="${r.clerk_url}" target="_blank" rel="noopener">${r.doc_num || '—'}</a>`
+    : (r.doc_num || '<span class="empty">—</span>');
+  const badge = r._count > 1 ? ` <span style="background:#4f7cff22;color:#4f7cff;border-radius:9px;padding:1px 7px;font-size:11px;margin-left:4px">${r._count} filings</span>` : '';
+  return `<tr onclick="showDetail(${idx})" style="cursor:pointer">
+    <td><span class="score ${scoreClass(r.score)}">${r.score}</span></td>
+    <td><span class="pill">${r.doc_type}</span></td>
+    <td>${r.filed || '<span class="empty">—</span>'}</td>
+    <td title="${r.grantee || ''}">${trunc(r.grantee, 30)}${badge}</td>
+    <td title="${r.owner || ''}">${trunc(r.owner, 25)}</td>
+    <td>${trunc(r.prop_address, 35)}</td>
+    <td>${trunc(r.mail_address, 25)}</td>
+    <td>${flagHTML(r.flags)}</td>
+    <td>${docLink}</td>
+  </tr>`;
+}
+
+function renderPagination(total, totalPages){
+  let html = `<span class="page-info">${total} records · Page ${page}/${totalPages}</span>`;
+  html += `<button onclick="goPage(${page-1})" ${page <= 1 ? 'disabled' : ''}>‹ Prev</button>`;
+  for(let p2 = Math.max(1, page - 2); p2 <= Math.min(totalPages, page + 2); p2++)
+    html += `<button class="${p2 === page ? 'active' : ''}" onclick="goPage(${p2})">${p2}</button>`;
+  html += `<button onclick="goPage(${page+1})" ${page >= totalPages ? 'disabled' : ''}>Next ›</button>`;
+  document.getElementById('pagination').innerHTML = html;
+}
+
+function goPage(p2){ page = p2; renderPage(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+function showDetail(localIdx){
+  const r = filtered[(page-1)*PAGE_SIZE+localIdx];
+  if(!r) return;
+  document.getElementById('modal-title').textContent = `${r.cat_label || r.doc_type} — ${r.doc_num || 'N/A'}`;
+  const fields = [
+    ['Document #', r.doc_num], ['Doc Type', `${r.doc_type} · ${r.cat_label}`],
+    ['Filed Date', r.filed], ['Score', r.score],
+    ['Grantee (Lender)', r.grantee], ['Grantor (Owner)', r.owner],
+    ['Amount', r.amount ? '$' + Number(r.amount).toLocaleString() : '—'],
+    ['Property Summary', r.prop_address],
+    ['Mailing Address', r.mail_address],
+    ['Legal Desc.', r.legal], ['Flags', (r.flags || []).join('; ')],
+    ['Clerk URL', r.clerk_url && r.clerk_url !== '#' ? `<a href="${r.clerk_url}" target="_blank">View Document ↗</a>` : '—'],
+  ];
+  document.getElementById('modal-body').innerHTML = fields.map(([k,v]) =>
+    `<div class="modal-row"><span class="k">${k}</span><span class="v">${v || '<em>—</em>'}</span></div>`).join('');
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal(){ document.getElementById('modal').classList.remove('open'); }
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
+
+function exportCSV(){
+  const cols = ['score', 'doc_type', 'cat_label', 'filed', 'owner', 'grantee', 'amount',
+                'prop_address', 'mail_address', 'doc_num', 'flags', 'clerk_url', 'legal'];
+  const rows = filtered.map(r => cols.map(c => {
+    let v = c === 'flags' ? (r.flags || []).join('; ') : (r[c] ?? '');
+    return `"${String(v).replace(/"/g, '""')}"`;
+  }).join(','));
+  const blob = new Blob([cols.join(',') + '\n' + rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `harris_leads_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+loadData();
+</script>
+</body>
+</html>
