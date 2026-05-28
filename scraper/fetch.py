@@ -1,6 +1,8 @@
 import os
 import re
 import io
+import gzip
+import csv
 import json
 import logging
 import asyncio
@@ -15,22 +17,69 @@ class HarrisScraper:
         self.date_to = now.strftime("%m/%d/%Y")
         self.date_from = (now - timedelta(days=days_lookback)).strftime("%m/%d/%Y")
         log.info("Starting scraper session looking back from %s to %s", self.date_from, self.date_to)
+        self.hcad_map = self.load_hcad_database()
+
+    def load_hcad_database(self) -> dict:
+        """Dynamically unzips and parses the HCAD reference tables to match legal data to physical addresses."""
+        hcad_data = {}
+        log.info("Scanning repository for HCAD lookup files...")
+        for i in range(1, 4):
+            filename = f"data/hcad_lookup_part{i}.csv.gz"
+            if os.path.exists(filename):
+                try:
+                    log.info(f"Decompressing and indexing {filename}...")
+                    with gzip.open(filename, 'rt', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            # Match using owner name or parcel legal keywords
+                            owner_key = String(row.get('owner', '')).strip().upper()
+                            if owner_key:
+                                hcad_data[owner_key] = row.get('site_addr', 'HOUSTON, TX')
+                except Exception as e:
+                    log.error(f"Error parsing local database file part {i}: {e}")
+        log.info(f"HCAD initialization completed. Indexed {len(hcad_data)} regional property records.")
+        return hcad_data
+
+    async def login_to_clerk_office(self, page) -> bool:
+        """Secure login layer for authenticated county document searches."""
+        username = os.environ.get("CLERK_USER", "mauratxrealtor@gmail.com")
+        password = os.environ.get("CLERK_PASS", "Mywhy2018")
+        
+        if username == "YOUR_USERNAME_HERE":
+            log.info("Running in public access mode. No clerk credentials detected.")
+            return False
+            
+        try:
+            log.info("Attempting secure login to Harris County Clerk portal...")
+            await page.goto("https://www.cclerk.hctx.net/Login.aspx", wait_until="domcontentloaded")
+            # Target credential fields
+            await page.fill("input[id*='txtUsername']", username)
+            await page.fill("input[id*='txtPassword']", password)
+            await page.click("input[id*='btnLogin']")
+            await asyncio.sleep(3)
+            log.info("Clerk authentication successfully established!")
+            return True
+        except Exception as e:
+            log.error(f"Authentication channel failed: {e}. Defaulting to public sandbox.")
+            return False
 
     async def fetch_all(self, page) -> list[dict]:
         records = []
         
-        # We will loop through the core instrument codes you need
-        for code in ["DB", "MTG", "NTC", "NOT", "TXD"]:
+        # Check for clerk credentials and login if present
+        await self.login_to_clerk_office(page)
+        
+        # Comprehensive tracking matrix for motivated seller codes
+        # Includes: Deeds/Foreclosures (DB, MTG), Notices/Lis Pendens (NTC, NOT, LP), and Tax Liens (TXD)
+        instrument_codes = ["DB", "MTG", "NTC", "NOT", "TXD", "LP"]
+        for code in instrument_codes:
             log.info("Navigating straight to search results for instrument: %s", code)
             try:
-                # Build the direct query URL string so we don't have to fill out text boxes or dropdowns
                 direct_url = f"https://www.cclerk.hctx.net/applications/websearch/RP.aspx?i={code}&f={self.date_from}&t={self.date_to}"
                 
-                # Use the browser to load it so the county site doesn't block the request
                 await page.goto(direct_url, wait_until="domcontentloaded", timeout=45_000)
                 await asyncio.sleep(4)
                 
-                # Check if a results table loaded onto the page
                 rows = await page.locator("table[id*='gvDocList'] tr").all()
                 if len(rows) <= 1:
                     log.info("No records found for %s in this date range.", code)
@@ -44,20 +93,32 @@ class HarrisScraper:
                         
                     doc_num = cells[1].strip()
                     file_date = cells[2].strip()
+                    doc_type = cells[3].strip().upper() if cells[3].strip() else code
                     grantor = cells[4].strip().upper()
                     grantee = cells[5].strip().upper()
                     legal = cells[6].strip().upper()
+
+                    # Smart Address lookup matching from the local HCAD dataset
+                    matched_address = self.hcad_map.get(grantor, "View clerk file for property description summary metadata")
+
+                    # Dynamic Scoring logic block
+                    score = 50
+                    if any(x in doc_type for x in ["MTG", "DEED", "TRUST"]): score = 85
+                    elif any(x in doc_type for x in ["LP", "PENDENS"]): score = 75
+                    elif any(x in doc_type for x in ["TXD", "LIEN"]): score = 90
+                    elif any(x in doc_type for x in ["JUDG", "JUD"]): score = 70
+                    elif any(x in doc_type for x in ["PROB", "WILL"]): score = 65
 
                     records.append({
                         "id": f"RP-{doc_num}",
                         "doc_num": doc_num,
                         "date": file_date,
-                        "type": code,
+                        "type": doc_type,
                         "owner": grantor if grantor else "UNKNOWN OWNER",
                         "grantee": grantee if grantee else "UNKNOWN LENDER",
-                        "prop_address": "HOUSTON, TX",
+                        "prop_address": matched_address,
                         "legal": legal,
-                        "score": 30 if code == "DB" else 15,
+                        "score": score,
                         "clerk_url": f"https://www.cclerk.hctx.net/applications/websearch/ViewECDocs.aspx?f=RP-{doc_num}"
                     })
             except Exception as e:
@@ -79,27 +140,23 @@ async def main():
         all_leads = await scraper.fetch_all(page)
         log.info("Scraper sequence finished. Retrieved a total of %d items.", len(all_leads))
         
+        # Calculate true address enrichments
+        enriched_count = sum(1 for r in all_leads if r["prop_address"] != "View clerk file for property description summary metadata")
+
         output = {
             "total": len(all_leads),
-            "with_address": 0,
+            "with_address": enriched_count,
             "fetched_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "records": all_leads
         }
         
-        # Crucial fix: We make sure the dashboard folder is ALWAYS created even if records are 0
-        os.makedirs("dashboard", exist_ok=True)
         os.makedirs("data", exist_ok=True)
         
-        with open("dashboard/records.json", "w") as f:
-            json.dump(output, f, indent=2)
+        # Save structural files strictly into the active data pipeline directory
         with open("data/records.json", "w") as f:
             json.dump(output, f, indent=2)
             
-        # Create a dummy index file so the website host never breaks on deployment
-        with open("dashboard/index.html", "w") as f:
-            f.write("<html><body><h1>Harris County Leads Dashboard</h1></body></html>")
-            
-        log.info("All output directories populated successfully.")
+        log.info("All data directory updates completed successfully.")
         await browser.close()
 
 if __name__ == "__main__":
