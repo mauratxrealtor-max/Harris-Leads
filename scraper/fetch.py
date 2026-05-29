@@ -18,7 +18,7 @@ class HarrisScraper:
         log.info("Starting scraper session looking back from %s to %s", self.date_from, self.date_to)
 
     async def login_to_clerk_office(self, page) -> bool:
-        """Secure login layer with robust iframe detection for the county portal."""
+        """Robust multi-layer login parser using global element stabilizers."""
         username = os.environ.get("CLERK_USER", "YOUR_USERNAME_HERE")
         password = os.environ.get("CLERK_PASS", "YOUR_PASSWORD_HERE")
 
@@ -28,23 +28,45 @@ class HarrisScraper:
 
         try:
             log.info("Attempting secure login to Harris County Clerk portal...")
+            # Navigate to the registration/login workspace and allow structural styles to settle
             await page.goto("https://www.cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx", wait_until="networkidle")
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
             
-            # Target the inner frame or layout container if embedded
-            frame = page.frame(name="main") or page.frame_locator("iframe").first or page
+            # Global fallbacks to capture the fields regardless of layout positioning
+            selectors = [
+                "input[id*='txtUsername']",
+                "#txtUsername",
+                "input[name*='Username']",
+                "input[type='text']"
+            ]
             
-            username_field = frame.locator("input[id*='txtUsername']").first
-            password_field = frame.locator("input[id*='txtPassword']").first
-            login_button = frame.locator("input[id*='btnLogin']").first
+            username_field = None
+            for sel in selectors:
+                try:
+                    locator = page.locator(sel).first
+                    if await locator.is_visible():
+                        username_field = locator
+                        log.info(f"Successfully matched login container via locator pattern: {sel}")
+                        break
+                except:
+                    continue
             
-            # Wait up to 15 seconds for the fields to structurally resolve inside the frame
-            await username_field.wait_for(timeout=15000)
+            if not username_field:
+                # Fallback to absolute raw page element detection if normal locators fail
+                username_field = page.locator("input[id*='txtUsername']").first
+                
+            await username_field.wait_for(timeout=10000)
             await username_field.fill(username)
+            
+            # Match and enter the password
+            password_field = page.locator("input[id*='txtPassword']").first
             await password_field.fill(password)
+            
+            # Target and execute the submit handler
+            login_button = page.locator("input[id*='btnLogin']").first
             await login_button.click()
             
-            await asyncio.sleep(4)
+            await asyncio.sleep(5)
             log.info("Clerk authentication successfully established!")
             return True
         except Exception as e:
