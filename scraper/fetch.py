@@ -18,7 +18,7 @@ class HarrisScraper:
         log.info("Starting scraper session looking back from %s to %s", self.date_from, self.date_to)
 
     async def login_to_clerk_office(self, page) -> bool:
-        """Robust multi-layer login parser using global element stabilizers."""
+        """Secure login utilizing human-interaction emulation to bypass dynamic fields."""
         username = os.environ.get("CLERK_USER", "YOUR_USERNAME_HERE")
         password = os.environ.get("CLERK_PASS", "YOUR_PASSWORD_HERE")
 
@@ -28,42 +28,27 @@ class HarrisScraper:
 
         try:
             log.info("Attempting secure login to Harris County Clerk portal...")
-            # Navigate to the registration/login workspace and allow structural styles to settle
             await page.goto("https://www.cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx", wait_until="networkidle")
-            await asyncio.sleep(5)
+            await asyncio.sleep(4)
             
-            # Global fallbacks to capture the fields regardless of layout positioning
-            selectors = [
-                "input[id*='txtUsername']",
-                "#txtUsername",
-                "input[name*='Username']",
-                "input[type='text']"
-            ]
-            
-            username_field = None
-            for sel in selectors:
-                try:
-                    locator = page.locator(sel).first
-                    if await locator.is_visible():
-                        username_field = locator
-                        log.info(f"Successfully matched login container via locator pattern: {sel}")
-                        break
-                except:
-                    continue
-            
-            if not username_field:
-                # Fallback to absolute raw page element detection if normal locators fail
-                username_field = page.locator("input[id*='txtUsername']").first
-                
+            # Find the username box using our proven working pattern
+            username_field = page.locator("input[type='text']").first
             await username_field.wait_for(timeout=10000)
-            await username_field.fill(username)
             
-            # Match and enter the password
-            password_field = page.locator("input[id*='txtPassword']").first
-            await password_field.fill(password)
+            # Emulate human interaction: Click and type to trigger page scripts
+            await username_field.click()
+            await username_field.press_sequentially(username, delay=100)
+            await asyncio.sleep(2)
             
-            # Target and execute the submit handler
-            login_button = page.locator("input[id*='btnLogin']").first
+            # Target the password container using a generic input type fallback
+            password_field = page.locator("input[type='password']").first
+            await password_field.wait_for(timeout=10000)
+            await password_field.click()
+            await password_field.press_sequentially(password, delay=100)
+            await asyncio.sleep(2)
+            
+            # Target the submit action handler
+            login_button = page.locator("input[type='submit'], input[id*='Login']").first
             await login_button.click()
             
             await asyncio.sleep(5)
