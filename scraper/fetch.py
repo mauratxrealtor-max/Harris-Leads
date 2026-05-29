@@ -18,7 +18,7 @@ class HarrisScraper:
         log.info("Starting scraper session looking back from %s to %s", self.date_from, self.date_to)
 
     async def login_to_clerk_office(self, page) -> bool:
-        """Secure login layer for authenticated county document searches."""
+        """Secure login layer with robust iframe detection for the county portal."""
         username = os.environ.get("CLERK_USER", "YOUR_USERNAME_HERE")
         password = os.environ.get("CLERK_PASS", "YOUR_PASSWORD_HERE")
 
@@ -28,12 +28,23 @@ class HarrisScraper:
 
         try:
             log.info("Attempting secure login to Harris County Clerk portal...")
-            # Updated to the direct live 2026 application routing path
-            await page.goto("https://www.cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx", wait_until="domcontentloaded")
-            await page.fill("input[id*='txtUsername']", username)
-            await page.fill("input[id*='txtPassword']", password)
-            await page.click("input[id*='btnLogin']")
+            await page.goto("https://www.cclerk.hctx.net/Applications/WebSearch/Registration/Login.aspx", wait_until="networkidle")
             await asyncio.sleep(3)
+            
+            # Target the inner frame or layout container if embedded
+            frame = page.frame(name="main") or page.frame_locator("iframe").first or page
+            
+            username_field = frame.locator("input[id*='txtUsername']").first
+            password_field = frame.locator("input[id*='txtPassword']").first
+            login_button = frame.locator("input[id*='btnLogin']").first
+            
+            # Wait up to 15 seconds for the fields to structurally resolve inside the frame
+            await username_field.wait_for(timeout=15000)
+            await username_field.fill(username)
+            await password_field.fill(password)
+            await login_button.click()
+            
+            await asyncio.sleep(4)
             log.info("Clerk authentication successfully established!")
             return True
         except Exception as e:
@@ -64,14 +75,12 @@ class HarrisScraper:
                     if len(cells) < 7:
                         continue
                     
-                    # Safely map cell structural contents
                     doc_num = cells[1].strip()
                     file_date = cells[2].strip()
                     grantor = cells[4].strip()
                     grantee = cells[3].strip()
                     summary = cells[5].strip()
                     
-                    # Generate dynamic tracking url directly to document
                     tracking_url = f"https://www.cclerk.hctx.net/applications/websearch/GetDocument.aspx?id={doc_num}"
 
                     records.append({
@@ -114,7 +123,6 @@ async def main():
         "records": extracted_data
     }
     
-    # Save directly to root and data subfolder for dashboard compatibility
     with open("records.json", "w") as f:
         json.dump(output, f, indent=2)
     with open("data/records.json", "w") as f:
