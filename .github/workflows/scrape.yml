@@ -25,7 +25,9 @@ jobs:
       - name: Create output directories
         run: mkdir -p dashboard data
       - name: Run scraper
-        run: python scraper/fetch.py
+        run: |
+          python scraper/fetch.py
+          cp dashboard/records.json records.json
         env:
           LOOKBACK_DAYS: 14
       - name: Verify output files exist
@@ -38,9 +40,6 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add dashboard/records.json data/records.json data/ghl_export.csv || true
+          git add dashboard/records.json data/records.json data/ghl_export.csv records.json || true
           git commit -m "chore: update leads $(date +'%Y-%m-%d') ($(python -c "import json; d=json.load(open('dashboard/records.json')); print(d['total'],'records')"))" || exit 0
           git push origin main
-      - name: Deploy Dashboard to GitHub Pages
-        uses: actions/deploy-pages@v4
-        continue-on-error: true
