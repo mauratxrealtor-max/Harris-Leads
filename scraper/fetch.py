@@ -45,6 +45,12 @@ try:
 except ImportError:
     HAS_PW = False
 
+try:
+    from pypdf import PdfReader as _PdfReader
+    HAS_PYPDF = True
+except ImportError:
+    HAS_PYPDF = False
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -67,6 +73,16 @@ CLERK_FRCL_URL  = "https://www.cclerk.hctx.net/applications/websearch/FRCL_R.asp
 
 # HCAD
 HCAD_BULK_PAGE  = "https://pdata.hcad.org/download/index.html"
+
+# Direct PDF download URL for FRCL documents via CCEConnect
+FRCL_PDF_URL = CLERK_BASE + "/CCEConnect/GetDocumentbyDocNum.aspx?DocumentNum={doc_num}"
+
+_PDF_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "application/pdf,*/*",
+    "Referer": "https://www.cclerk.hctx.net/applications/websearch/FRCL_R.aspx",
+}
 
 # Output paths
 ROOT           = Path(__file__).resolve().parent.parent
@@ -149,6 +165,94 @@ def _deduplicate(records: list[dict]) -> list[dict]:
             out.append(rec)
     log.info("Dedup: %d raw -> %d unique", len(records), len(out))
     return out
+
+
+# ---------------------------------------------------------------------------
+# FRCL PDF enrichment helpers
+# ---------------------------------------------------------------------------
+def _extract_frcl_pdf_fields(pdf_bytes: bytes) -> tuple[str, str]:
+    """Return (grantor_name, prop_address) parsed from FRCL PDF bytes."""
+    if not HAS_PYPDF:
+        return "", ""
+    import io
+    try:
+        reader = _PdfReader(io.BytesIO(pdf_bytes))
+        text = "\n".join(page.extract_text() or "" for page in reader.pages[:3])
+    except Exception as exc:
+        log.debug("pypdf extract error: %s", exc)
+        return "", ""
+
+    owner = ""
+    prop_address = ""
+
+    # Grantor / Borrower name — stop at common following fields
+    m = re.search(
+        r'(?:GRANTOR|Grantor|BORROWER|Borrower)\s*[:/]\s*'
+        r'([A-Z][A-Za-z ,.\-&\']+?)(?=\s*(?:\n|TRUSTEE|BENEFICIARY|GRANTEE|LENDER|NOTE|$))',
+        text, re.MULTILINE,
+    )
+    if m:
+        owner = m.group(1).strip().rstrip(",").strip()
+
+    # Property address — labeled or bare street pattern
+    m = re.search(
+        r'(?:PROPERTY\s+ADDRESS|Property\s+Address'
+        r'|PREMISES\s+(?:LOCATED\s+AT|AT)|LOCATED\s+AT|located\s+at)'
+        r'[:\s]+(\d+\s+[A-Za-z0-9][^\n,]{5,80})',
+        text, re.IGNORECASE,
+    )
+    if not m:
+        m = re.search(
+            r'\b(\d{1,5}\s+(?:[NSEW]\s+)?[A-Z][A-Za-z0-9\s]{2,30}'
+            r'(?:ST|AVE|BLVD|DR|LN|RD|WAY|CT|PL|TRL|FWY|PKWY|HWY|CIR|LOOP)\.?)'
+            r'\s*[,\n]',
+            text, re.IGNORECASE,
+        )
+    if m:
+        prop_address = m.group(1).strip()
+
+    return owner, prop_address
+
+
+def _enrich_frcl_records(records: list[dict]) -> None:
+    """Download each FRCL PDF and populate owner / prop_address in-place."""
+    if not HAS_PYPDF:
+        log.warning("pypdf not installed — FRCL PDF enrichment skipped")
+        return
+
+    session = requests.Session()
+    session.headers.update(_PDF_HEADERS)
+
+    enriched = 0
+    for rec in records:
+        doc_num = rec.get("doc_num", "")
+        if not doc_num:
+            continue
+
+        # Prefer URL captured directly from the search-results page anchor
+        url = rec.pop("_pdf_url", None) or FRCL_PDF_URL.format(doc_num=doc_num)
+        try:
+            resp = session.get(url, timeout=20, allow_redirects=True)
+            if resp.status_code != 200:
+                log.debug("FRCL PDF %s: HTTP %d", doc_num, resp.status_code)
+                continue
+            if "pdf" not in resp.headers.get("Content-Type", "").lower():
+                log.debug("FRCL PDF %s: non-PDF Content-Type %s",
+                          doc_num, resp.headers.get("Content-Type"))
+                continue
+            owner, prop_address = _extract_frcl_pdf_fields(resp.content)
+            if owner:
+                rec["owner"] = owner
+            if prop_address:
+                rec["prop_address"] = prop_address
+            if owner or prop_address:
+                enriched += 1
+            log.debug("FRCL PDF %s: owner=%r addr=%r", doc_num, owner, prop_address)
+        except Exception as exc:
+            log.debug("FRCL PDF %s fetch error: %s", doc_num, exc)
+        time.sleep(0.3)
+
+    log.info("FRCL PDF enrichment: %d/%d records populated", enriched, len(records))
 
 
 # ---------------------------------------------------------------------------
@@ -847,6 +951,21 @@ class ClerkScraper:
                             else: clerk_url = f"https://www.cclerk.hctx.net/applications/websearch/{href}"
                 except Exception: pass
 
+                # Capture the direct document/PDF link from the first cell anchor
+                pdf_url = ""
+                try:
+                    link = frcl_row.locator("td:first-child a, td a").first
+                    if await link.count():
+                        href = await link.get_attribute("href")
+                        if href and "javascript" not in href.lower():
+                            pdf_url = (
+                                href if href.startswith("http")
+                                else CLERK_BASE + "/" + href.lstrip("/")
+                            )
+                            clerk_url = pdf_url
+                except Exception:
+                    pass
+
                 records.append({
                     "doc_num":      doc_num,
                     "doc_type":     doc_code,
@@ -866,6 +985,7 @@ class ClerkScraper:
                     "mail_state":   "",
                     "mail_zip":     "",
                     "clerk_url":    clerk_url,
+                    "_pdf_url":     pdf_url,  # consumed by _enrich_frcl_records
                     "flags":        [],
                     "score":        0,
                 })
@@ -955,6 +1075,22 @@ class ClerkScraper:
             except Exception:
                 if attempt < 3: await asyncio.sleep(3 * attempt)
         return []
+
+    async def fetch_frcl_on_page(self, page) -> list[dict]:
+        months = self._months_in_range(self.date_from, self.date_to)
+        log.info("FRCL scraping %d month(s): %s",
+                 len(months), ", ".join(f"{y}-{m:02d}" for y, m in months))
+        all_records: list[dict] = []
+        for i, (year, month) in enumerate(months):
+            recs = await self._scrape_frcl_month(page, year, month)
+            log.info("  FRCL %04d-%02d -> %d records", year, month, len(recs))
+            all_records.extend(recs)
+            if i < len(months) - 1:
+                await asyncio.sleep(2)
+        log.info("FRCL: downloading PDFs for %d records to extract owner/address...",
+                 len(all_records))
+        await asyncio.to_thread(_enrich_frcl_records, all_records)
+        return all_records
 
     async def fetch_all_on_page(self, page) -> list[dict]:
         all_records: list[dict] = []
