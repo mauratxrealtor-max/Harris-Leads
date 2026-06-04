@@ -214,7 +214,7 @@ def _extract_frcl_pdf_fields(pdf_bytes: bytes) -> tuple[str, str]:
     return owner, prop_address
 
 
-def _enrich_frcl_records(records: list[dict]) -> None:
+def _enrich_frcl_records(records: list[dict], cookies: dict | None = None) -> None:
     """Download each FRCL PDF and populate owner / prop_address in-place."""
     if not HAS_PYPDF:
         log.warning("pypdf not installed — FRCL PDF enrichment skipped")
@@ -222,6 +222,8 @@ def _enrich_frcl_records(records: list[dict]) -> None:
 
     session = requests.Session()
     session.headers.update(_PDF_HEADERS)
+    if cookies:
+        session.cookies.update(cookies)
 
     enriched = 0
     for rec in records:
@@ -229,27 +231,40 @@ def _enrich_frcl_records(records: list[dict]) -> None:
         if not doc_num:
             continue
 
-        # Prefer URL captured directly from the search-results page anchor
-        url = rec.pop("_pdf_url", None) or FRCL_PDF_URL.format(doc_num=doc_num)
-        try:
-            resp = session.get(url, timeout=20, allow_redirects=True)
-            if resp.status_code != 200:
-                log.debug("FRCL PDF %s: HTTP %d", doc_num, resp.status_code)
-                continue
-            if "pdf" not in resp.headers.get("Content-Type", "").lower():
-                log.debug("FRCL PDF %s: non-PDF Content-Type %s",
-                          doc_num, resp.headers.get("Content-Type"))
-                continue
-            owner, prop_address = _extract_frcl_pdf_fields(resp.content)
-            if owner:
-                rec["owner"] = owner
-            if prop_address:
-                rec["prop_address"] = prop_address
-            if owner or prop_address:
-                enriched += 1
-            log.debug("FRCL PDF %s: owner=%r addr=%r", doc_num, owner, prop_address)
-        except Exception as exc:
-            log.debug("FRCL PDF %s fetch error: %s", doc_num, exc)
+        # Try the direct CCEConnect download first (often public, no auth needed).
+        # Fall back to the ViewECdocs viewer URL (needs session cookies) if that fails.
+        direct_url = FRCL_PDF_URL.format(doc_num=doc_num)
+        viewer_url = rec.pop("_pdf_url", None)
+        urls_to_try = [direct_url]
+        if viewer_url and viewer_url != direct_url:
+            urls_to_try.append(viewer_url)
+
+        pdf_bytes = None
+        for url in urls_to_try:
+            try:
+                resp = session.get(url, timeout=20, allow_redirects=True)
+                if resp.status_code != 200:
+                    log.info("FRCL PDF %s: HTTP %d for %s", doc_num, resp.status_code, url)
+                    continue
+                ct = resp.headers.get("Content-Type", "").lower()
+                if "pdf" in ct or resp.content[:4] == b"%PDF":
+                    pdf_bytes = resp.content
+                    break
+                log.info("FRCL PDF %s: non-PDF response (%s) for %s", doc_num, ct[:80], url)
+            except Exception as exc:
+                log.info("FRCL PDF %s fetch error: %s", doc_num, exc)
+
+        if not pdf_bytes:
+            continue
+
+        owner, prop_address = _extract_frcl_pdf_fields(pdf_bytes)
+        if owner:
+            rec["owner"] = owner
+        if prop_address:
+            rec["prop_address"] = prop_address
+        if owner or prop_address:
+            enriched += 1
+        log.info("FRCL PDF %s: owner=%r addr=%r", doc_num, owner, prop_address)
         time.sleep(0.3)
 
     log.info("FRCL PDF enrichment: %d/%d records populated", enriched, len(records))
@@ -992,62 +1007,6 @@ class ClerkScraper:
             except Exception: pass
         return records
 
-    async def fetch_frcl_on_page(self, page) -> list[dict]:
-        months = self._months_in_range(self.date_from, self.date_to)
-        log.info("FRCL scraping %d month(s): %s", len(months), ", ".join(f"{y}-{m:02d}" for y, m in months))
-        all_records: list[dict] = []
-        for i, (year, month) in enumerate(months):
-            recs = await self._scrape_frcl_month(page, year, month)
-            enriched_count = 0
-            try:
-                cookies = await page.context.cookies()
-                session_cookies = {c["name"]: c["value"] for c in cookies}
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                    "Referer": CLERK_FRCL_URL,
-                    "Accept": "application/pdf,text/html,*/*",
-                }
-                session = requests.Session()
-                session.headers.update(headers)
-                session.cookies.update(session_cookies)
-
-                for rec in recs:
-                    doc_url = rec.get("clerk_url", "")
-                    if "ViewECdocs" not in doc_url:
-                        continue
-                    try:
-                        resp = session.get(doc_url, timeout=20, allow_redirects=True)
-                        if resp.status_code == 200 and (resp.headers.get("content-type", "").startswith("application/pdf") or b"%PDF" in resp.content[:10]):
-                            import pypdf
-                            reader = pypdf.PdfReader(io.BytesIO(resp.content))
-                            full_text = ""
-                            for pdf_page in reader.pages:
-                                text = pdf_page.extract_text()
-                                if text: full_text += text + "\n"
-                            
-                            owner_match = re.search(r'(?:Debtor|Trustor|Grantor)\s*:\s*([^\n]+)', full_text, re.I)
-                            if owner_match: rec["owner"] = owner_match.group(1).strip()
-                            
-                            lender_match = re.search(r'(?:Beneficiary|Lender|Mortgagee)\s*:\s*([^\n]+)', full_text, re.I)
-                            if lender_match: rec["grantee"] = lender_match.group(1).strip()
-                            
-                            addr_match = re.search(r'\b(\d{1,5})\s+([NSEW]\s+)?([A-Z0-9\s]{2,30}(?:ST|AVE|BLVD|DR|LN|RD|WAY|CT|PL|TRL|FWY|PKWY|HWY|CIR|LOOP))\b', full_text.upper())
-                            if addr_match: rec["prop_address"] = addr_match.group(0).strip()
-                            
-                            if rec.get("owner") or rec.get("prop_address"):
-                                enriched_count += 1
-                                log.info(f"  FRCL parsed PDF {rec['doc_num']} -> Owner: {rec['owner']}, Addr: {rec['prop_address']}")
-                    except Exception as exc:
-                        log.info(f"  FRCL PDF extraction failed for {rec.get('doc_num', '?')}: {exc}")
-            except Exception as exc:
-                log.warning("  FRCL ViewECdocs session setup failed: %s", exc)
-            
-            all_records.extend(recs)
-            if i < len(months) - 1:
-                await page.goto(CLERK_FRCL_URL, wait_until="domcontentloaded", timeout=20_000)
-                await asyncio.sleep(2)
-        return all_records
-
     async def _paginate_frcl(self, page, year: int, month: int) -> list[dict]:
         all_recs: list[dict] = []
         page_num = 1
@@ -1089,7 +1048,8 @@ class ClerkScraper:
                 await asyncio.sleep(2)
         log.info("FRCL: downloading PDFs for %d records to extract owner/address...",
                  len(all_records))
-        await asyncio.to_thread(_enrich_frcl_records, all_records)
+        cookies = {c["name"]: c["value"] for c in await page.context.cookies()}
+        await asyncio.to_thread(_enrich_frcl_records, all_records, cookies)
         return all_records
 
     async def fetch_all_on_page(self, page) -> list[dict]:
