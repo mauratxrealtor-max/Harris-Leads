@@ -29,7 +29,7 @@ jobs:
           python scraper/fetch.py
           cp dashboard/records.json records.json
         env:
-          LOOKBACK_DAYS: 14
+          LOOKBACK_DAYS: 60
       - name: Verify output files exist
         run: |
           if [ ! -f "dashboard/records.json" ]; then
