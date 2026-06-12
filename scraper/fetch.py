@@ -25,6 +25,7 @@ import re
 import sys
 import time
 import traceback
+import urllib.parse
 import zipfile
 import io
 from datetime import datetime, timedelta, timezone
@@ -1025,10 +1026,9 @@ class ClerkScraper:
                     if await link.count():
                         href = await link.get_attribute("href")
                         if href and "javascript" not in href.lower():
-                            pdf_url = (
-                                href if href.startswith("http")
-                                else CLERK_BASE + "/" + href.lstrip("/")
-                            )
+                            # urljoin resolves against FRCL page base (/Applications/WebSearch/)
+                            # so ViewECdocs.aspx lands at the correct subdirectory, not site root
+                            pdf_url = urllib.parse.urljoin(CLERK_FRCL_URL, href)
                 except Exception:
                     pass
 
