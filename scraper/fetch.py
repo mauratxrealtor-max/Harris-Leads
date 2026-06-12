@@ -1015,21 +1015,13 @@ class ClerkScraper:
                 filed = _parse_date(sale_date) or _parse_date(file_date)
                 doc_code = "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
+                # Stable permanent link — always use FileNo search URL, not the session-bound ViewECdocs token
                 clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
-                try:
-                    link_el = frcl_row.locator("a").first
-                    if await link_el.count() > 0:
-                        href = await link_el.get_attribute("href")
-                        if href and len(href) > 10 and "javascript" not in href.lower():
-                            if href.startswith("http"): clerk_url = href
-                            elif href.startswith("/"): clerk_url = f"https://www.cclerk.hctx.net{href}"
-                            else: clerk_url = f"https://www.cclerk.hctx.net/applications/websearch/{href}"
-                except Exception: pass
 
-                # Capture the direct document/PDF link from the first cell anchor
+                # Capture ViewECdocs URL separately for PDF download (used while Playwright session is live)
                 pdf_url = ""
                 try:
-                    link = frcl_row.locator("td:first-child a, td a").first
+                    link = frcl_row.locator("td a").first
                     if await link.count():
                         href = await link.get_attribute("href")
                         if href and "javascript" not in href.lower():
@@ -1037,7 +1029,6 @@ class ClerkScraper:
                                 href if href.startswith("http")
                                 else CLERK_BASE + "/" + href.lstrip("/")
                             )
-                            clerk_url = pdf_url
                 except Exception:
                     pass
 
@@ -1103,13 +1094,43 @@ class ClerkScraper:
         for i, (year, month) in enumerate(months):
             recs = await self._scrape_frcl_month(page, year, month)
             log.info("  FRCL %04d-%02d -> %d records", year, month, len(recs))
+
+            # Fetch PDFs immediately while still on the results page.
+            # ViewECdocs tokens are session-bound and expire on navigation away,
+            # so we must download before moving to the next month.
+            enriched = 0
+            for rec in recs:
+                pdf_url = rec.pop("_pdf_url", None)
+                doc_num = rec.get("doc_num", "")
+                if not pdf_url:
+                    continue
+                try:
+                    resp = await page.request.get(pdf_url, timeout=20_000)
+                    if resp.status != 200:
+                        log.info("FRCL PDF %s: HTTP %d for %s", doc_num, resp.status, pdf_url)
+                        continue
+                    body = await resp.body()
+                    ct = (resp.headers.get("content-type") or "").lower()
+                    if "pdf" not in ct and body[:4] != b"%PDF":
+                        log.info("FRCL PDF %s: non-PDF response (%s)", doc_num, ct[:80])
+                        continue
+                    owner, prop_address = _extract_frcl_pdf_fields(body)
+                    if owner:
+                        rec["owner"] = owner
+                    if prop_address:
+                        rec["prop_address"] = prop_address
+                    if owner or prop_address:
+                        enriched += 1
+                    log.info("FRCL PDF %s: owner=%r addr=%r", doc_num, owner, prop_address)
+                except Exception as exc:
+                    log.info("FRCL PDF %s error: %s", doc_num, exc)
+                await asyncio.sleep(0.2)
+            log.info("  FRCL %04d-%02d PDF enrichment: %d/%d records populated",
+                     year, month, enriched, len(recs))
+
             all_records.extend(recs)
             if i < len(months) - 1:
                 await asyncio.sleep(2)
-        log.info("FRCL: downloading PDFs for %d records to extract owner/address...",
-                 len(all_records))
-        cookies = {c["name"]: c["value"] for c in await page.context.cookies()}
-        await asyncio.to_thread(_enrich_frcl_records, all_records, cookies)
         return all_records
 
     async def fetch_all_on_page(self, page) -> list[dict]:
