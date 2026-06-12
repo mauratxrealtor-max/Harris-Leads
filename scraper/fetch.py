@@ -88,8 +88,9 @@ _PDF_HEADERS = {
 ROOT           = Path(__file__).resolve().parent.parent
 DASHBOARD_JSON = ROOT / "dashboard" / "records.json"
 DATA_JSON      = ROOT / "data" / "records.json"
-GHL_CSV        = ROOT / "data" / "ghl_export.csv"
-TMP_DIR        = ROOT / "tmp"
+GHL_CSV               = ROOT / "data" / "ghl_export.csv"
+TMP_DIR               = ROOT / "tmp"
+TAX_DELINQUENT_PATH   = ROOT / "data" / "tax_delinquent.csv.gz"
 
 # Doc-type map  ->  (category, human label)
 DOC_TYPE_MAP: dict[str, tuple[str, str]] = {
@@ -299,6 +300,8 @@ def compute_score(rec: dict) -> tuple[int, list[str]]:
         flags.append("Bankruptcy")
     if re.search(r"\b(LLC|INC|CORP|LTD|LP|LLP|PLLC|TRUST)\b", owner, re.I):
         flags.append("LLC / corp owner")
+    if rec.get("tax_delinquent_amt"):
+        flags.append("Tax delinquent")
 
     try:
         filed_dt = datetime.strptime(filed_str[:10], "%Y-%m-%d")
@@ -311,8 +314,11 @@ def compute_score(rec: dict) -> tuple[int, list[str]]:
 
     has_lp = any("lis pendens" in f.lower() for f in flags)
     has_fc = any("pre-foreclosure" in f.lower() for f in flags)
+    has_td = any("tax delinquent" in f.lower() for f in flags)
     if has_lp and has_fc:
         score += 20
+    if has_fc and has_td:
+        score += 10
 
     try:
         amt = float(amount)
@@ -323,7 +329,6 @@ def compute_score(rec: dict) -> tuple[int, list[str]]:
     except (TypeError, ValueError):
         pass
 
-   
     if prop_addr and prop_addr.strip():
         score += 5
 
@@ -490,6 +495,61 @@ class ParcelLookup:
                 return hit
 
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Tax Delinquent Lookup  (data/tax_delinquent.csv.gz — Harris County)
+# ---------------------------------------------------------------------------
+class TaxDelinquentLookup:
+    def __init__(self):
+        self._addr_idx: dict[str, dict] = {}
+        self._loaded = False
+
+    @staticmethod
+    def _norm(addr: str) -> str:
+        return re.sub(r"\s+", " ", addr.upper().strip())
+
+    def load(self) -> None:
+        if not TAX_DELINQUENT_PATH.exists():
+            log.warning("tax_delinquent.csv.gz not found — tax delinquency cross-reference disabled")
+            return
+        import gzip as gz
+        count = 0
+        try:
+            with gz.open(TAX_DELINQUENT_PATH, "rt", encoding="utf-8", errors="replace") as fh:
+                for row in csv.DictReader(fh):
+                    addr = (row.get("prop_address") or "").strip()
+                    if not addr:
+                        continue
+                    try:
+                        amt = float(row.get("tax_delinquent_amt") or 0)
+                    except ValueError:
+                        amt = 0.0
+                    self._addr_idx[self._norm(addr)] = {
+                        "owner":             (row.get("owner") or "").strip(),
+                        "account":           (row.get("account") or "").strip(),
+                        "tax_delinquent_amt": amt,
+                    }
+                    count += 1
+        except Exception as exc:
+            log.error("Failed to load tax_delinquent.csv.gz: %s", exc)
+            return
+        if count:
+            log.info("Tax delinquent lookup loaded: %d properties", count)
+            self._loaded = True
+        else:
+            log.warning("Tax delinquent lookup: 0 records loaded")
+
+    def lookup_by_address(self, addr: str) -> dict:
+        if not self._loaded or not addr:
+            return {}
+        key = self._norm(addr)
+        hit = self._addr_idx.get(key)
+        if hit:
+            return hit
+        # Strip unit suffix and retry
+        base = re.sub(r"\s+(APT|UNIT|STE|#)\s*\S+.*$", "", key).strip()
+        return self._addr_idx.get(base) or {}
 
 
 # ---------------------------------------------------------------------------
@@ -1340,6 +1400,25 @@ async def main():
             if hit2 and hit2.get("prop_address"):
                 rec.update({k: v for k, v in hit2.items() if v})
                 enriched_parcel += 1
+
+    tax_db = TaxDelinquentLookup()
+    tax_db.load()
+    tax_matched = 0
+    tax_owner_filled = 0
+    for rec in records:
+        prop_addr = rec.get("prop_address", "")
+        if not prop_addr:
+            continue
+        hit = tax_db.lookup_by_address(prop_addr)
+        if not hit:
+            continue
+        rec["tax_delinquent_amt"] = hit["tax_delinquent_amt"]
+        tax_matched += 1
+        if not rec.get("owner") and hit.get("owner"):
+            rec["owner"] = hit["owner"]
+            tax_owner_filled += 1
+    log.info("Tax delinquent cross-reference: %d records matched, %d owner names filled",
+             tax_matched, tax_owner_filled)
 
     for rec in records:
         score, flags = compute_score(rec)
