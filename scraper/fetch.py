@@ -75,9 +75,6 @@ CLERK_FRCL_URL  = "https://www.cclerk.hctx.net/applications/websearch/FRCL_R.asp
 # HCAD
 HCAD_BULK_PAGE  = "https://pdata.hcad.org/download/index.html"
 
-# Direct PDF download URL for FRCL documents via CCEConnect
-FRCL_PDF_URL = CLERK_BASE + "/CCEConnect/GetDocumentbyDocNum.aspx?DocumentNum={doc_num}"
-
 _PDF_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -184,34 +181,57 @@ def _extract_frcl_pdf_fields(pdf_bytes: bytes) -> tuple[str, str]:
         log.debug("pypdf extract error: %s", exc)
         return "", ""
 
+    log.debug("FRCL PDF raw text (first 1500 chars):\n%s", text[:1500])
+
     owner = ""
     prop_address = ""
 
-    # Grantor / Borrower name — stop at common following fields
-    m = re.search(
-        r'(?:GRANTOR|Grantor|BORROWER|Borrower)\s*[:/]\s*'
-        r'([A-Z][A-Za-z ,.\-&\']+?)(?=\s*(?:\n|TRUSTEE|BENEFICIARY|GRANTEE|LENDER|NOTE|$))',
-        text, re.MULTILINE,
-    )
-    if m:
-        owner = m.group(1).strip().rstrip(",").strip()
+    # --- Grantor name ---
+    # Harris County FRCL PDFs use "Grantor(s)/Mortgagor(s):" label
+    # Try most specific patterns first, fall back to broader ones
+    grantor_patterns = [
+        # "Grantor(s)/Mortgagor(s):\nNAME" (name on next line)
+        r'Grantor\(s\)/Mortgagor\(s\)[:\s]*\n([A-Z][A-Z\s,.\-&\']+?)(?=\n)',
+        # "Grantor(s)/Mortgagor(s): NAME" (name on same line)
+        r'Grantor\(s\)/Mortgagor\(s\)[:\s]+([A-Z][A-Z\s,.\-&\']{3,80}?)(?=\n|\r|$)',
+        # Fallback: plain "Grantor:" or "Grantor :"
+        r'Grantor\s*[:/]\s*([A-Z][A-Za-z\s,.\-&\']{3,80}?)(?=\n|Trustee|Beneficiary|Grantee|Lender|$)',
+        # "Borrower:" label
+        r'Borrower\s*[:/]\s*([A-Z][A-Za-z\s,.\-&\']{3,80}?)(?=\n|$)',
+    ]
+    for pattern in grantor_patterns:
+        m = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+        if m:
+            candidate = m.group(1).strip().rstrip(",").strip()
+            # Filter out junk matches (too short, or looks like a label)
+            if len(candidate) > 3 and not re.search(r'\b(COUNTY|STATE|TEXAS|HARRIS)\b', candidate, re.I):
+                owner = candidate
+                break
 
-    # Property address — labeled or bare street pattern
-    m = re.search(
-        r'(?:PROPERTY\s+ADDRESS|Property\s+Address'
-        r'|PREMISES\s+(?:LOCATED\s+AT|AT)|LOCATED\s+AT|located\s+at)'
-        r'[:\s]+(\d+\s+[A-Za-z0-9][^\n,]{5,80})',
-        text, re.IGNORECASE,
-    )
-    if not m:
-        m = re.search(
-            r'\b(\d{1,5}\s+(?:[NSEW]\s+)?[A-Z][A-Za-z0-9\s]{2,30}'
-            r'(?:ST|AVE|BLVD|DR|LN|RD|WAY|CT|PL|TRL|FWY|PKWY|HWY|CIR|LOOP)\.?)'
-            r'\s*[,\n]',
-            text, re.IGNORECASE,
-        )
-    if m:
-        prop_address = m.group(1).strip()
+    # --- Property address ---
+    # Harris County FRCL PDFs use "Property address:" label
+    addr_patterns = [
+        # "Property address:\n13023 HIGH STAR DRIVE\nHOUSTON, TX 77072"
+        r'Property\s+address[:\s]*\n(\d+[^\n]{5,60})\n([^\n]{3,50})',
+        # "Property address: 13023 HIGH STAR DRIVE HOUSTON TX 77072"
+        r'Property\s+address[:\s]+(\d+[^\n\r]{5,80})',
+        # Fallback: bare street number pattern
+        r'\b(\d{1,5}\s+(?:[NSEW]\s+)?[A-Z][A-Za-z0-9\s]{2,30}'
+        r'(?:ST|AVE|BLVD|DR|LN|RD|WAY|CT|PL|TRL|FWY|PKWY|HWY|CIR|LOOP)\.?)'
+        r'\s*[,\n]',
+    ]
+    for i, pattern in enumerate(addr_patterns):
+        m = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+        if m:
+            if i == 0:
+                # Two capture groups: street + city/state line
+                street = m.group(1).strip()
+                city_line = m.group(2).strip()
+                prop_address = f"{street}, {city_line}"
+            else:
+                prop_address = m.group(1).strip()
+            prop_address = re.sub(r'\s+', ' ', prop_address).strip()
+            break
 
     return owner, prop_address
 
@@ -233,12 +253,9 @@ def _enrich_frcl_records(records: list[dict], cookies: dict | None = None) -> No
         if not doc_num:
             continue
 
-        # Try the direct CCEConnect download first (often public, no auth needed).
-        # Fall back to the ViewECdocs viewer URL (needs session cookies) if that fails.
-        direct_url = FRCL_PDF_URL.format(doc_num=doc_num)
         viewer_url = rec.pop("_pdf_url", None)
-        urls_to_try = [direct_url]
-        if viewer_url and viewer_url != direct_url:
+        urls_to_try = []
+        if viewer_url:
             urls_to_try.append(viewer_url)
 
         pdf_bytes = None
@@ -548,7 +565,6 @@ class TaxDelinquentLookup:
         hit = self._addr_idx.get(key)
         if hit:
             return hit
-        # Strip unit suffix and retry
         base = re.sub(r"\s+(APT|UNIT|STE|#)\s*\S+.*$", "", key).strip()
         return self._addr_idx.get(base) or {}
 
@@ -557,12 +573,6 @@ class TaxDelinquentLookup:
 # Clerk Doc Number Lookup (from deeds/owners/permits HCAD data)
 # ---------------------------------------------------------------------------
 class ClerkLookup:
-    """
-    Fast exact lookup of owner name + property address by RP doc number.
-    Built from HCAD deeds.txt + owners.txt + permits.txt data files.
-    File: data/clerk_lookup.json.gz
-    """
-
     def __init__(self):
         self._idx: dict[str, dict] = {}
         self._loaded = False
@@ -1016,18 +1026,15 @@ class ClerkScraper:
                 filed = _parse_date(sale_date) or _parse_date(file_date)
                 doc_code = "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
-                # Stable permanent link — always use FileNo search URL, not the session-bound ViewECdocs token
                 clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
 
-                # Capture ViewECdocs URL separately for PDF download (used while Playwright session is live)
+                # Capture ViewECdocs URL for PDF download while session is live
                 pdf_url = ""
                 try:
                     link = frcl_row.locator("td a").first
                     if await link.count():
                         href = await link.get_attribute("href")
                         if href and "javascript" not in href.lower():
-                            # urljoin resolves against FRCL page base (/Applications/WebSearch/)
-                            # so ViewECdocs.aspx lands at the correct subdirectory, not site root
                             pdf_url = urllib.parse.urljoin(CLERK_FRCL_URL, href)
                 except Exception:
                     pass
@@ -1051,7 +1058,7 @@ class ClerkScraper:
                     "mail_state":   "",
                     "mail_zip":     "",
                     "clerk_url":    clerk_url,
-                    "_pdf_url":     pdf_url,  # consumed by _enrich_frcl_records
+                    "_pdf_url":     pdf_url,
                     "flags":        [],
                     "score":        0,
                 })
@@ -1095,9 +1102,7 @@ class ClerkScraper:
             recs = await self._scrape_frcl_month(page, year, month)
             log.info("  FRCL %04d-%02d -> %d records", year, month, len(recs))
 
-            # Fetch PDFs immediately while still on the results page.
-            # ViewECdocs tokens are session-bound and expire on navigation away,
-            # so we must download before moving to the next month.
+            # Download PDFs immediately while session is still live
             enriched = 0
             for rec in recs:
                 pdf_url = rec.pop("_pdf_url", None)
@@ -1391,8 +1396,8 @@ async def main():
     enriched_parcel = 0
     for rec in records:
         doc_num = rec.get("doc_num", "")
-        owner   = rec.get("owner", "")    
-        grantee = rec.get("grantee", "")  
+        owner   = rec.get("owner", "")
+        grantee = rec.get("grantee", "")
         prop_addr = rec.get("prop_address", "")
 
         hit = clerk_db.lookup(doc_num)
@@ -1405,7 +1410,6 @@ async def main():
             enriched_clerk += 1
             continue
 
-        # Reverse address lookup if the portal gave us an address but no owner name
         if prop_addr and not owner:
             hit_addr = parcel_db.lookup_by_address(prop_addr)
             if hit_addr and hit_addr.get("owner"):
