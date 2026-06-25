@@ -181,7 +181,7 @@ def _extract_frcl_pdf_fields(pdf_bytes: bytes) -> tuple[str, str]:
         log.debug("pypdf extract error: %s", exc)
         return "", ""
 
-    log.debug("FRCL PDF raw text (first 1500 chars):\n%s", text[:1500])
+    log.info("FRCL PDF raw text (first 1500 chars):\n%s", text[:1500])
 
     owner = ""
     prop_address = ""
