@@ -16,10 +16,14 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+      - name: Install system dependencies (tesseract OCR + poppler)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tesseract-ocr poppler-utils
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install playwright beautifulsoup4 lxml requests pypdf
+          pip install playwright beautifulsoup4 lxml requests pypdf pytesseract pillow pdf2image
           pip install -r scraper/requirements.txt || echo "Requirements fallback"
           playwright install chromium
       - name: Create output directories
@@ -43,3 +47,4 @@ jobs:
           git add dashboard/records.json data/records.json data/ghl_export.csv records.json || true
           git commit -m "chore: update leads $(date +'%Y-%m-%d') ($(python -c "import json; d=json.load(open('dashboard/records.json')); print(d['total'],'records')"))" || exit 0
           git push origin main
+Add tesseract OCR and poppler to workflow
