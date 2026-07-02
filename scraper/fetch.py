@@ -52,6 +52,14 @@ try:
 except ImportError:
     HAS_PYPDF = False
 
+try:
+    import pytesseract
+    from PIL import Image
+    from pdf2image import convert_from_bytes
+    HAS_OCR = True
+except ImportError:
+    HAS_OCR = False
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -170,52 +178,62 @@ def _deduplicate(records: list[dict]) -> list[dict]:
 # FRCL PDF enrichment helpers
 # ---------------------------------------------------------------------------
 def _extract_frcl_pdf_fields(pdf_bytes: bytes) -> tuple[str, str]:
-    """Return (grantor_name, prop_address) parsed from FRCL PDF bytes."""
-    if not HAS_PYPDF:
-        return "", ""
-    import io
-    try:
-        reader = _PdfReader(io.BytesIO(pdf_bytes))
-        text = "\n".join(page.extract_text() or "" for page in reader.pages[:3])
-    except Exception as exc:
-        log.debug("pypdf extract error: %s", exc)
-        return "", ""
-
-    log.info("FRCL PDF raw text (first 1500 chars):\n%s", text[:1500])
-
+    """Return (grantor_name, prop_address) parsed from FRCL PDF bytes using OCR."""
     owner = ""
     prop_address = ""
 
-    # --- Grantor name ---
-    # Harris County FRCL PDFs use "Grantor(s)/Mortgagor(s):" label
-    # Try most specific patterns first, fall back to broader ones
+    # First try pypdf text extraction (fast)
+    if HAS_PYPDF:
+        try:
+            reader = _PdfReader(io.BytesIO(pdf_bytes))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages[:3])
+        except Exception:
+            text = ""
+
+        if text.strip():
+            owner, prop_address = _parse_frcl_text(text)
+            if owner or prop_address:
+                return owner, prop_address
+
+    # Fall back to OCR (handles image-based PDFs)
+    if HAS_OCR:
+        try:
+            images = convert_from_bytes(pdf_bytes, dpi=200, first_page=1, last_page=1)
+            text = pytesseract.image_to_string(images[0])
+            log.debug("OCR text (first 800 chars): %s", text[:800])
+            owner, prop_address = _parse_frcl_text(text)
+        except Exception as exc:
+            log.debug("OCR error: %s", exc)
+
+    return owner, prop_address
+
+
+def _parse_frcl_text(text: str) -> tuple[str, str]:
+    """Parse owner name and property address from extracted PDF text."""
+    owner = ""
+    prop_address = ""
+
+    # --- Grantor/owner name ---
     grantor_patterns = [
-        # "Grantor(s)/Mortgagor(s):\nNAME" (name on next line)
-        r'Grantor\(s\)/Mortgagor\(s\)[:\s]*\n([A-Z][A-Z\s,.\-&\']+?)(?=\n)',
-        # "Grantor(s)/Mortgagor(s): NAME" (name on same line)
+        r'Grantor\(s\)/Mortgagor\(s\)[:\s]*\n([A-Z][A-Z\s,.\-&\']{3,80}?)(?=\n)',
         r'Grantor\(s\)/Mortgagor\(s\)[:\s]+([A-Z][A-Z\s,.\-&\']{3,80}?)(?=\n|\r|$)',
-        # Fallback: plain "Grantor:" or "Grantor :"
         r'Grantor\s*[:/]\s*([A-Z][A-Za-z\s,.\-&\']{3,80}?)(?=\n|Trustee|Beneficiary|Grantee|Lender|$)',
-        # "Borrower:" label
         r'Borrower\s*[:/]\s*([A-Z][A-Za-z\s,.\-&\']{3,80}?)(?=\n|$)',
+        # OCR variant — may have spaces/noise around colon
+        r'Grantor[\s\(].*?[:\)][\s]*([A-Z][A-Z\s,.\-&\']{3,80}?)(?=\n)',
     ]
     for pattern in grantor_patterns:
         m = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if m:
             candidate = m.group(1).strip().rstrip(",").strip()
-            # Filter out junk matches (too short, or looks like a label)
-            if len(candidate) > 3 and not re.search(r'\b(COUNTY|STATE|TEXAS|HARRIS)\b', candidate, re.I):
+            if len(candidate) > 3 and not re.search(r'\b(COUNTY|STATE|TEXAS|HARRIS|LLC|LOAN|BANK|MORTGAGE)\b', candidate, re.I):
                 owner = candidate
                 break
 
     # --- Property address ---
-    # Harris County FRCL PDFs use "Property address:" label
     addr_patterns = [
-        # "Property address:\n13023 HIGH STAR DRIVE\nHOUSTON, TX 77072"
-        r'Property\s+address[:\s]*\n(\d+[^\n]{5,60})\n([^\n]{3,50})',
-        # "Property address: 13023 HIGH STAR DRIVE HOUSTON TX 77072"
-        r'Property\s+address[:\s]+(\d+[^\n\r]{5,80})',
-        # Fallback: bare street number pattern
+        r'Property\s+[Aa]ddress[:\s]*\n(\d+[^\n]{5,60})\n([^\n]{3,50})',
+        r'Property\s+[Aa]ddress[:\s]+(\d+[^\n\r]{5,80})',
         r'\b(\d{1,5}\s+(?:[NSEW]\s+)?[A-Z][A-Za-z0-9\s]{2,30}'
         r'(?:ST|AVE|BLVD|DR|LN|RD|WAY|CT|PL|TRL|FWY|PKWY|HWY|CIR|LOOP)\.?)'
         r'\s*[,\n]',
@@ -224,7 +242,6 @@ def _extract_frcl_pdf_fields(pdf_bytes: bytes) -> tuple[str, str]:
         m = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if m:
             if i == 0:
-                # Two capture groups: street + city/state line
                 street = m.group(1).strip()
                 city_line = m.group(2).strip()
                 prop_address = f"{street}, {city_line}"
@@ -1023,10 +1040,22 @@ class ClerkScraper:
                     if m: doc_num = m.group(1)
                     else: continue
 
-                filed = _parse_date(sale_date) or _parse_date(file_date)
+                auction_date = _parse_date(sale_date)
+                filed_date   = _parse_date(file_date)
                 doc_code = "NOFC"
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
                 clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
+
+                # Skip records with past auction dates (already sold)
+                if auction_date:
+                    try:
+                        auction_dt = datetime.strptime(auction_date, "%Y-%m-%d")
+                        today = datetime.now(timezone.utc).replace(tzinfo=None)
+                        # Keep only current month or future auctions
+                        if auction_dt.year < today.year or (auction_dt.year == today.year and auction_dt.month < today.month):
+                            continue
+                    except Exception:
+                        pass
 
                 # Capture ViewECdocs URL for PDF download while session is live
                 pdf_url = ""
@@ -1042,7 +1071,8 @@ class ClerkScraper:
                 records.append({
                     "doc_num":      doc_num,
                     "doc_type":     doc_code,
-                    "filed":        filed,
+                    "filed":        filed_date,
+                    "auction_date": auction_date,
                     "cat":          cat,
                     "cat_label":    cat_label,
                     "owner":        trustor,
@@ -1458,3 +1488,4 @@ async def main():
 
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))
+Add OCR for NOFC PDFs, fix auction date vs filed date, filter past auctions
