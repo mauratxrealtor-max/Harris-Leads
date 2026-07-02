@@ -40,11 +40,15 @@ jobs:
             echo "Error: dashboard/records.json was not generated!"
             exit 1
           fi
+      - name: Count records
+        id: count
+        run: |
+          COUNT=$(python -c "import json; d=json.load(open('dashboard/records.json')); print(d['total'],'records')")
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
       - name: Commit and push updated data
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add dashboard/records.json data/records.json data/ghl_export.csv records.json || true
-          git commit -m "chore: update leads $(date +'%Y-%m-%d') ($(python -c "import json; d=json.load(open('dashboard/records.json')); print(d['total'],'records')"))" || exit 0
+          git commit -m "chore: update leads $(date +'%Y-%m-%d') (${{ steps.count.outputs.count }})" || exit 0
           git push origin main
-Add tesseract OCR and poppler to workflow
