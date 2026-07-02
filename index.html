@@ -42,6 +42,7 @@
     .flag { display: inline-block; background: rgba(79,124,255,.15); border: 1px solid rgba(79,124,255,.3); border-radius: 4px; font-size: 10px; padding: 1px 6px; margin: 1px 2px 1px 0; white-space: nowrap; color: #a5b4fc; }
     .flag.red { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.3); color: #fca5a5; }
     .pill { display: inline-block; border-radius: 4px; font-size: 10px; font-weight: 700; padding: 2px 7px; background: rgba(255,107,53,.15); color: var(--accent2); white-space: nowrap; }
+    .auction-badge { display: inline-block; background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.4); border-radius: 4px; font-size: 10px; font-weight: 700; padding: 2px 7px; color: #fca5a5; white-space: nowrap; }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
     .empty { color: var(--muted); font-style: italic; }
@@ -115,6 +116,7 @@
           <th onclick="sortBy('score')">Score</th>
           <th onclick="sortBy('doc_type')">Type</th>
           <th onclick="sortBy('filed')">Filed</th>
+          <th onclick="sortBy('auction_date')">Auction Date</th>
           <th onclick="sortBy('grantee')">Grantee (Owner)</th>
           <th onclick="sortBy('owner')">Grantor</th>
           <th onclick="sortBy('prop_address')">Property Address</th>
@@ -161,7 +163,8 @@ async function loadData() {
 function renderStats(data) {
   const hot=ALL_RECORDS.filter(r=>r.score>=70).length;
   const warm=ALL_RECORDS.filter(r=>r.score>=50&&r.score<70).length;
-  const html=[['Total Leads',data.total],['Hot (≥70)',hot],['Warm (50–69)',warm],['With Address',data.with_address||0]]
+  const nofc=ALL_RECORDS.filter(r=>r.doc_type==='NOFC').length;
+  const html=[['Total Leads',data.total],['Hot (≥70)',hot],['Warm (50–69)',warm],['With Address',data.with_address||0],['Pre-Foreclosure',nofc]]
     .map(([l,v])=>`<div class="stat-card"><div class="val">${v}</div><div class="lbl">${l}</div></div>`).join('');
   document.getElementById('stats-bar').innerHTML=html;
 }
@@ -178,7 +181,7 @@ function applyFilters() {
     if(cat&&r.cat!==cat) return false;
     if(addrOnly&&!r.prop_address) return false;
     if(q){
-      const hay=[r.owner,r.grantee,r.doc_num,r.prop_address,r.mail_address,r.legal].join(' ').toLowerCase();
+      const hay=[r.owner,r.grantee,r.doc_num,r.prop_address,r.mail_address,r.legal,r.auction_date].join(' ').toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
@@ -214,7 +217,7 @@ function clearFilters(){
 function sortBy(col){
   if(sortCol===col) sortDir=sortDir==='asc'?'desc':'asc'; else{sortCol=col;sortDir='desc';}
   document.querySelectorAll('th').forEach(th=>th.classList.remove('sort-asc','sort-desc'));
-  const headers=['score','doc_type','filed','grantee','owner','prop_address','mail_address','','doc_num'];
+  const headers=['score','doc_type','filed','auction_date','grantee','owner','prop_address','mail_address','','doc_num'];
   const idx=headers.indexOf(col);
   if(idx>=0) document.querySelectorAll('#main-table thead th')[idx]?.classList.add(sortDir==='asc'?'sort-asc':'sort-desc');
   sortRecords(); renderPage();
@@ -253,6 +256,17 @@ function trunc(s,n){
   return s.length>n?`<span title="${s}">${s.substring(0,n)}…</span>`:s;
 }
 
+function fmtAuctionDate(r){
+  if(r.doc_type!=='NOFC') return '<span class="empty">—</span>';
+  if(!r.auction_date) return '<span class="empty">—</span>';
+  // Highlight upcoming auctions in red
+  const d = new Date(r.auction_date);
+  const today = new Date();
+  const daysOut = Math.ceil((d - today) / (1000*60*60*24));
+  if(daysOut <= 7) return `<span class="auction-badge">🔴 ${r.auction_date}</span>`;
+  return `<span style="color:var(--yellow);font-weight:600">${r.auction_date}</span>`;
+}
+
 function rowHTML(r,idx){
   const docLink=r.clerk_url
     ?`<a href="${r.clerk_url}" target="_blank" rel="noopener">${r.doc_num||'—'}</a>`
@@ -262,6 +276,7 @@ function rowHTML(r,idx){
     <td><span class="score ${scoreClass(r.score)}">${r.score}</span></td>
     <td><span class="pill">${r.doc_type}</span></td>
     <td>${r.filed||'<span class="empty">—</span>'}</td>
+    <td>${fmtAuctionDate(r)}</td>
     <td title="${r.grantee||''}">${trunc(r.grantee,30)}${badge}</td>
     <td title="${r.owner||''}">${trunc(r.owner,25)}</td>
     <td>${fmtAddr(r.prop_address,r.prop_city,r.prop_zip)}</td>
@@ -288,7 +303,7 @@ function showDetail(localIdx){
   document.getElementById('modal-title').textContent=`${r.cat_label||r.doc_type} — ${r.doc_num||'N/A'}`;
   const fields=[
     ['Document #',r.doc_num],['Doc Type',`${r.doc_type} · ${r.cat_label}`],
-    ['Filed Date',r.filed],['Score',r.score],
+    ['Filed Date',r.filed],['Auction Date',r.auction_date||'—'],['Score',r.score],
     ['Grantee (Owner)',r.grantee],['Grantor (Filer)',r.owner],
     ['Amount',r.amount?'$'+Number(r.amount).toLocaleString():'—'],
     ['Property Address',[r.prop_address,r.prop_city,r.prop_state,r.prop_zip].filter(Boolean).join(', ')],
@@ -305,7 +320,7 @@ function closeModal(){document.getElementById('modal').classList.remove('open');
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
 
 function exportCSV(){
-  const cols=['score','doc_type','cat_label','filed','owner','grantee','amount',
+  const cols=['score','doc_type','cat_label','filed','auction_date','owner','grantee','amount',
               'prop_address','prop_city','prop_state','prop_zip',
               'mail_address','mail_city','mail_state','mail_zip',
               'doc_num','flags','clerk_url','legal'];
