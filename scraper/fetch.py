@@ -370,6 +370,24 @@ def compute_score(rec: dict) -> tuple[int, list[str]]:
     if prop_addr and prop_addr.strip():
         score += 5
 
+    # Boost score for NOFC records with upcoming auction dates
+    auction_date = rec.get("auction_date", "")
+    if doc_type == "NOFC" and auction_date:
+        try:
+            auction_dt = datetime.strptime(auction_date, "%Y-%m-%d")
+            days_out = (auction_dt - datetime.utcnow()).days
+            if days_out <= 14:
+                score += 25
+                flags.append("Auction within 2 weeks")
+            elif days_out <= 30:
+                score += 15
+                flags.append("Auction within 30 days")
+            elif days_out <= 60:
+                score += 10
+                flags.append("Auction within 60 days")
+        except Exception:
+            pass
+
     return min(score, 100), list(dict.fromkeys(flags))
 
 
@@ -1049,13 +1067,15 @@ class ClerkScraper:
                 cat, cat_label = DOC_TYPE_MAP[doc_code]
                 clerk_url = f"{CLERK_FRCL_URL}?FileNo={doc_num}"
 
-                # Skip records with past auction dates (already sold)
+                # Skip current month and past auction dates — only pull future months
                 if auction_date:
                     try:
                         auction_dt = datetime.strptime(auction_date, "%Y-%m-%d")
                         today = datetime.now(timezone.utc).replace(tzinfo=None)
-                        # Keep only current month or future auctions
-                        if auction_dt.year < today.year or (auction_dt.year == today.year and auction_dt.month < today.month):
+                        # Keep only auctions in future months (not current month)
+                        if auction_dt.year < today.year or (
+                            auction_dt.year == today.year and auction_dt.month <= today.month
+                        ):
                             continue
                     except Exception:
                         pass
@@ -1101,18 +1121,38 @@ class ClerkScraper:
     async def _paginate_frcl(self, page, year: int, month: int) -> list[dict]:
         all_recs: list[dict] = []
         page_num = 1
-        while True:
+        MAX_PAGES = 100  # safety cap
+
+        while page_num <= MAX_PAGES:
             recs = await self._parse_frcl_page(page, year, month)
             all_recs.extend(recs)
-            next_el = page.locator('a:has-text("Next"), input[value*="Next"], a[id*="Next"], a[id*="next"], a:has-text(">"), td a:has-text(">")').first
-            if await next_el.count() == 0:
+            log.info("  FRCL %04d-%02d page %d: %d rows (total so far: %d)",
+                     year, month, page_num, len(recs), len(all_recs))
+
+            if not recs:
                 break
+
+            # FRCL portal uses numbered page links, not a Next button
+            # Try clicking the next page number link
+            next_page = page_num + 1
             try:
-                await next_el.click()
+                # Look for a link with exactly the next page number
+                next_link = page.locator(f'td a:text-is("{next_page}")').first
+                if await next_link.count() == 0:
+                    # Also try span/other elements containing the page number
+                    next_link = page.locator(f'a:text-is("{next_page}")').first
+                if await next_link.count() == 0:
+                    log.info("  FRCL %04d-%02d: no page %d link found, done", year, month, next_page)
+                    break
+                await next_link.click()
                 await page.wait_for_load_state("networkidle", timeout=30_000)
+                await asyncio.sleep(1)
                 page_num += 1
-            except Exception:
+            except Exception as exc:
+                log.info("  FRCL %04d-%02d: pagination stopped at page %d: %s", year, month, page_num, exc)
                 break
+
+        log.info("  FRCL %04d-%02d: total %d records across %d pages", year, month, len(all_recs), page_num)
         return all_recs
 
     async def _scrape_frcl_month(self, page, year: int, month: int) -> list[dict]:
@@ -1402,8 +1442,9 @@ async def main():
                     await asyncio.sleep(CHUNK_DELAY)
 
             try:
-                # FRCL: scrape from today through end of current year
-                frcl_from = now.strftime("%Y-%m-%d")
+                # FRCL: scrape from next month through end of current year
+                next_month = (now.replace(day=1) + timedelta(days=32)).replace(day=1)
+                frcl_from = next_month.strftime("%Y-%m-%d")
                 frcl_to   = now.replace(month=12, day=31).strftime("%Y-%m-%d")
                 log.info("FRCL date range: %s -> %s", frcl_from, frcl_to)
                 frcl_scraper = ClerkScraper(frcl_from, frcl_to)
@@ -1447,14 +1488,23 @@ async def main():
             enriched_clerk += 1
             continue
 
-        if prop_addr and not owner:
+        if prop_addr:
             hit_addr = parcel_db.lookup_by_address(prop_addr)
-            if hit_addr and hit_addr.get("owner"):
-                rec["owner"] = hit_addr["owner"]
-                if hit_addr.get("mail_address"):
-                    rec.update({k: v for k, v in hit_addr.items() if v})
+            if hit_addr:
+                if not owner and hit_addr.get("owner"):
+                    rec["owner"] = hit_addr["owner"]
+                # Always fill mailing address from HCAD if missing
+                if not rec.get("mail_address") and hit_addr.get("mail_address"):
+                    rec["mail_address"] = hit_addr.get("mail_address", "")
+                    rec["mail_city"]    = hit_addr.get("mail_city", "")
+                    rec["mail_state"]   = hit_addr.get("mail_state", "TX")
+                    rec["mail_zip"]     = hit_addr.get("mail_zip", "")
+                # Fill zip code from HCAD if missing
+                if not rec.get("prop_zip") and hit_addr.get("prop_zip"):
+                    rec["prop_zip"] = hit_addr.get("prop_zip", "")
                 enriched_parcel += 1
-                continue
+                if not owner:
+                    continue
 
         lookup_name = grantee if grantee else owner
         if lookup_name:
