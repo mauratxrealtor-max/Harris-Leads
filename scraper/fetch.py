@@ -1132,18 +1132,31 @@ class ClerkScraper:
             if not recs:
                 break
 
-            # FRCL portal uses numbered page links, not a Next button
-            # Try clicking the next page number link
+            # FRCL portal uses numbered page links + "..." for overflow pages
             next_page = page_num + 1
             try:
-                # Look for a link with exactly the next page number
+                # First try exact page number link
                 next_link = page.locator(f'td a:text-is("{next_page}")').first
                 if await next_link.count() == 0:
-                    # Also try span/other elements containing the page number
                     next_link = page.locator(f'a:text-is("{next_page}")').first
+
+                # If next page number not visible, try clicking "..." to load more page links
+                if await next_link.count() == 0:
+                    dots_link = page.locator('a:text-is("..."), td a:text-is("...")').first
+                    if await dots_link.count() > 0:
+                        log.info("  FRCL %04d-%02d: clicking ... to load more pages", year, month)
+                        await dots_link.click()
+                        await page.wait_for_load_state("networkidle", timeout=30_000)
+                        await asyncio.sleep(1)
+                        # Now try the next page link again
+                        next_link = page.locator(f'td a:text-is("{next_page}")').first
+                        if await next_link.count() == 0:
+                            next_link = page.locator(f'a:text-is("{next_page}")').first
+
                 if await next_link.count() == 0:
                     log.info("  FRCL %04d-%02d: no page %d link found, done", year, month, next_page)
                     break
+
                 await next_link.click()
                 await page.wait_for_load_state("networkidle", timeout=30_000)
                 await asyncio.sleep(1)
