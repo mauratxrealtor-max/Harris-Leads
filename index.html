@@ -301,12 +301,24 @@ function showDetail(localIdx){
   const r=filtered[(page-1)*PAGE_SIZE+localIdx];
   if(!r) return;
   document.getElementById('modal-title').textContent=`${r.cat_label||r.doc_type} — ${r.doc_num||'N/A'}`;
+  const fullAddr = [r.prop_address,r.prop_city,r.prop_state,r.prop_zip].filter(Boolean).join(', ');
+  const harUrl = r.prop_address
+    ? `https://www.har.com/search/dosearch?searchtype=all&q=${encodeURIComponent(r.prop_address+' '+( r.prop_city||'Houston')+' TX')}`
+    : '';
+  const hcadUrl = r.prop_address
+    ? `https://hcad.org/property-search/real-property/property-quick-search/?quick_search=${encodeURIComponent(r.prop_address)}`
+    : '';
+  const compButtons = r.prop_address ? `
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+      <a href="${harUrl}" target="_blank" style="background:#4f7cff;color:#fff;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">🏠 View HAR Comps ↗</a>
+      <a href="${hcadUrl}" target="_blank" style="background:#22c55e;color:#fff;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">📋 HCAD Parcel ↗</a>
+    </div>` : '';
   const fields=[
     ['Document #',r.doc_num],['Doc Type',`${r.doc_type} · ${r.cat_label}`],
     ['Filed Date',r.filed],['Auction Date',r.auction_date||'—'],['Score',r.score],
     ['Grantee (Owner)',r.grantee],['Grantor (Filer)',r.owner],
     ['Amount',r.amount?'$'+Number(r.amount).toLocaleString():'—'],
-    ['Property Address',[r.prop_address,r.prop_city,r.prop_state,r.prop_zip].filter(Boolean).join(', ')],
+    ['Property Address',fullAddr+(compButtons?'<br>'+compButtons:'')],
     ['Mailing Address',[r.mail_address,r.mail_city,r.mail_state,r.mail_zip].filter(Boolean).join(', ')],
     ['Legal Desc.',r.legal],['Flags',(r.flags||[]).join('; ')],
     ['Clerk URL',r.clerk_url?`<a href="${r.clerk_url}" target="_blank">View Document ↗</a>`:'—'],
