@@ -198,8 +198,11 @@ def _extract_frcl_pdf_fields(pdf_bytes: bytes) -> tuple[str, str]:
     # Fall back to OCR (handles image-based PDFs)
     if HAS_OCR:
         try:
-            images = convert_from_bytes(pdf_bytes, dpi=200, first_page=1, last_page=1)
-            text = pytesseract.image_to_string(images[0])
+            images = convert_from_bytes(pdf_bytes, dpi=300, first_page=1, last_page=1)
+            img = images[0]
+            # Convert to grayscale for better OCR accuracy
+            img = img.convert("L")
+            text = pytesseract.image_to_string(img, config="--psm 6 --oem 3")
             log.debug("OCR text (first 800 chars): %s", text[:800])
             owner, prop_address = _parse_frcl_text(text)
         except Exception as exc:
@@ -1399,7 +1402,11 @@ async def main():
                     await asyncio.sleep(CHUNK_DELAY)
 
             try:
-                frcl_scraper = ClerkScraper(date_from, date_to)
+                # FRCL: scrape from today through end of current year
+                frcl_from = now.strftime("%Y-%m-%d")
+                frcl_to   = now.replace(month=12, day=31).strftime("%Y-%m-%d")
+                log.info("FRCL date range: %s -> %s", frcl_from, frcl_to)
+                frcl_scraper = ClerkScraper(frcl_from, frcl_to)
                 frcl_recs = await frcl_scraper.fetch_frcl_on_page(page)
                 all_raw.extend(frcl_recs)
                 _save_partial(all_raw, date_from, date_to)
@@ -1488,4 +1495,3 @@ async def main():
 
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))
-sys.exit(asyncio.run(main()))
