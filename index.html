@@ -310,8 +310,9 @@ function showDetail(localIdx){
     : '';
   const compButtons = r.prop_address ? `
     <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
-      <a href="${harUrl}" target="_blank" style="background:#4f7cff;color:#fff;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">🏠 View HAR Comps ↗</a>
-      <a href="${hcadUrl}" target="_blank" style="background:#22c55e;color:#fff;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">📋 HCAD Parcel ↗</a>
+      <a href="${harUrl}" target="_blank" style="background:#4f7cff;color:#fff;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">🏠 HAR Comps ↗</a>
+      <a href="${hcadUrl}" target="_blank" style="background:#22c55e;color:#fff;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">📋 HCAD ↗</a>
+      <button onclick="navigator.clipboard.writeText('${fullAddr}').then(()=>{this.textContent='✅ Copied!';setTimeout(()=>this.textContent='📋 Copy Address',1500)})" style="background:#f59e0b;color:#fff;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;border:none;cursor:pointer;">📋 Copy Address</button>
     </div>` : '';
   const fields=[
     ['Document #',r.doc_num],['Doc Type',`${r.doc_type} · ${r.cat_label}`],
