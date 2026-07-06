@@ -1132,35 +1132,37 @@ class ClerkScraper:
             if not recs:
                 break
 
-            # FRCL portal uses numbered page links + "..." for overflow pages
             next_page = page_num + 1
+            navigated = False
             try:
-                # First try exact page number link
+                # Try exact next page number link first
                 next_link = page.locator(f'td a:text-is("{next_page}")').first
                 if await next_link.count() == 0:
                     next_link = page.locator(f'a:text-is("{next_page}")').first
 
-                # If next page number not visible, try clicking "..." to load more page links
-                if await next_link.count() == 0:
+                if await next_link.count() > 0:
+                    await next_link.click()
+                    await page.wait_for_load_state("networkidle", timeout=30_000)
+                    await asyncio.sleep(1)
+                    page_num += 1
+                    navigated = True
+                else:
+                    # Next page number not visible — try clicking "..."
+                    # On this portal, "..." navigates directly to the next page
+                    # so we just parse the new page without looking for a specific number
                     dots_link = page.locator('a:text-is("..."), td a:text-is("...")').first
                     if await dots_link.count() > 0:
-                        log.info("  FRCL %04d-%02d: clicking ... to load more pages", year, month)
+                        log.info("  FRCL %04d-%02d: clicking ... for page %d", year, month, next_page)
                         await dots_link.click()
                         await page.wait_for_load_state("networkidle", timeout=30_000)
                         await asyncio.sleep(1)
-                        # Now try the next page link again
-                        next_link = page.locator(f'td a:text-is("{next_page}")').first
-                        if await next_link.count() == 0:
-                            next_link = page.locator(f'a:text-is("{next_page}")').first
+                        page_num += 1
+                        navigated = True
 
-                if await next_link.count() == 0:
-                    log.info("  FRCL %04d-%02d: no page %d link found, done", year, month, next_page)
+                if not navigated:
+                    log.info("  FRCL %04d-%02d: no more pages after page %d, done", year, month, page_num)
                     break
 
-                await next_link.click()
-                await page.wait_for_load_state("networkidle", timeout=30_000)
-                await asyncio.sleep(1)
-                page_num += 1
             except Exception as exc:
                 log.info("  FRCL %04d-%02d: pagination stopped at page %d: %s", year, month, page_num, exc)
                 break
