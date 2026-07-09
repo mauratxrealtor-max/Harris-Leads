@@ -211,6 +211,21 @@ def _extract_frcl_pdf_fields(pdf_bytes: bytes) -> tuple[str, str]:
     return owner, prop_address
 
 
+# Known auction venue addresses to filter out
+VENUE_ADDRESSES = {
+    "9401 KNIGHT RD", "9401 KNIGHT ROAD",
+    "1000 BLUE GENTIAN RD", "1000 BLUE GENTIAN ROAD",
+    "9401 KNIGHT", "BAYOU CITY EVENT CENTER",
+}
+
+def _is_venue_address(addr: str) -> bool:
+    """Return True if address is a known auction venue, not a property."""
+    if not addr:
+        return False
+    upper = addr.upper().strip()
+    return any(venue in upper for venue in VENUE_ADDRESSES)
+
+
 def _parse_frcl_text(text: str) -> tuple[str, str]:
     """Parse owner name and property address from extracted PDF text."""
     owner = ""
@@ -252,6 +267,10 @@ def _parse_frcl_text(text: str) -> tuple[str, str]:
                 prop_address = m.group(1).strip()
             prop_address = re.sub(r'\s+', ' ', prop_address).strip()
             break
+
+    # Filter out venue addresses
+    if _is_venue_address(prop_address):
+        prop_address = ""
 
     return owner, prop_address
 
@@ -1503,7 +1522,7 @@ async def main():
             enriched_clerk += 1
             continue
 
-        if prop_addr:
+        if prop_addr and not _is_venue_address(prop_addr):
             hit_addr = parcel_db.lookup_by_address(prop_addr)
             if hit_addr:
                 if not owner and hit_addr.get("owner"):
@@ -1520,6 +1539,10 @@ async def main():
                 enriched_parcel += 1
                 if not owner:
                     continue
+        elif prop_addr and _is_venue_address(prop_addr):
+            # Venue address — clear it and try HCAD lookup by owner name instead
+            rec["prop_address"] = ""
+            rec["prop_city"] = "Houston"
 
         lookup_name = grantee if grantee else owner
         if lookup_name:
